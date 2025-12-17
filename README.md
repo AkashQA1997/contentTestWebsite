@@ -45,6 +45,23 @@ This repo includes a GitHub Actions workflow that publishes the **`root/`** fold
 - Backend mode requires appending `?api=...` to your Pages URL, for example:
   - `https://USER.github.io/REPO/?api=https://YOUR_BACKEND`
 
+## Free backend hosting (Render) — recommended: Docker
+
+Render’s “native” Node environment may fail installing Playwright OS dependencies (it tries to `su`/install packages).
+This repo includes a `Dockerfile` that uses the official Playwright image (browsers + deps included).
+
+### Steps
+
+- Render → **New +** → **Web Service**
+- Choose your GitHub repo + branch (e.g. `stage`)
+- **Environment**: select **Docker**
+- Deploy
+
+After deploy, Render gives you a URL like `https://YOUR-SERVICE.onrender.com`.
+Use it from Pages:
+
+- `https://USER.github.io/REPO/?api=https://YOUR-SERVICE.onrender.com`
+
 ## API
 
 ### `POST /compare`

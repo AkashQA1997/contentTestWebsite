@@ -1,155 +1,115 @@
 /* ---------- Base Layout ---------- */
 body {
-  font-family: Arial, sans-serif;
-  background: #f9fafb;
-  padding: 20px;
-}
-
-h1 {
-  text-align: center;
-  margin-bottom: 16px;
-}
-
-form {
-  max-width: 1000px;
-  margin: 0 auto 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-input, textarea, select, button {
-  padding: 10px;
-  font-size: 14px;
-}
-
-textarea {
-  width: 100%;
-  resize: vertical;
-}
-
-button {
-  background: #1a73e8;
-  color: #fff;
-  border: none;
-  cursor: pointer;
-  font-weight: bold;
-}
-
-button:hover {
-  background: #1558b0;
-}
-
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-
-@media (max-width: 900px) {
-  .grid2 { grid-template-columns: 1fr; }
-}
-
-.panel {
-  border: 1px solid #e5e7eb;
-  background: #fff;
-  border-radius: 8px;
-  padding: 12px;
-  display: none;
-  gap: 10px;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.checkbox {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.hint {
-  font-size: 12px;
-  color: #374151;
-}
-
-.notice {
-  max-width: 1000px;
-  margin: 0 auto 12px;
-  font-size: 13px;
-  color: #374151;
-}
-
-/* ---------- Loader ---------- */
-.loader {
-  display: none;
-  width: 45px;
-  height: 45px;
-  border: 6px solid #e0e0e0;
-  border-top: 6px solid #1a73e8;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-  margin: 20px auto;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-/* ---------- Status ---------- */
-#status {
-  text-align: center;
-  font-size: 20px;
-  font-weight: bold;
-  margin: 15px 0;
-}
-
-.pass { color: #0f9d58; }
-.fail { color: #d93025; }
-
-/* ---------- Diff Highlights ---------- */
-.added {
-  background-color: #00e676; /* neon green */
-  color: #000;
-  font-weight: 700;
-  padding: 2px 4px;
-  border-radius: 4px;
-  box-shadow: 0 0 6px rgba(73, 196, 136, 0.5);
-}
-
-.removed {
-  background-color: #ff1744; /* bright red */
-  color: #fff;
-  font-weight: 700;
-  padding: 2px 4px;
-  border-radius: 4px;
-  box-shadow: 0 0 6px rgba(151, 18, 45, 0.5);
-}
-
-/* ---------- Output Layout ---------- */
-#output {
-  max-width: 1000px;
-  margin: 0 auto;
-}
-
-#output h3 {
-  text-align: center;
-  margin-bottom: 10px;
-}
-
-.card {
-  background: #ffffff;
-  padding: 15px;
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-}
-
-.mono {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-
+    font-family: Arial, sans-serif;
+    background: #f9fafb;
+    padding: 20px;
+  }
+  
+  h1 {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  
+  form {
+    max-width: 800px;
+    margin: 0 auto 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  input, textarea, select, button {
+    padding: 10px;
+    font-size: 14px;
+  }
+  
+  button {
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  
+  button:hover {
+    background: #1558b0;
+  }
+  
+  /* ---------- Loader ---------- */
+  .loader {
+    display: none;
+    width: 45px;
+    height: 45px;
+    border: 6px solid #e0e0e0;
+    border-top: 6px solid #1a73e8;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 20px auto;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  /* ---------- Status ---------- */
+  #status {
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    margin: 15px 0;
+  }
+  
+  .pass {
+    color: #0f9d58;
+  }
+  
+  .fail {
+    color: #d93025;
+  }
+  
+  /* ---------- Diff Highlights ---------- */
+  .added {
+    background-color: #00e676;          /* neon green */
+    color: #000;
+    font-weight: 700;
+    padding: 3px 5px;
+    border-radius: 4px;
+    box-shadow: 0 0 6px rgba(73, 196, 136, 0.9);
+    transition: transform 0.15s ease-in-out;
+  }
+  
+  .removed {
+    background-color: #ff1744;          /* bright red */
+    color: #fff;
+    font-weight: 700;
+    padding: 3px 5px;
+    border-radius: 4px;
+    box-shadow: 0 0 6px rgba(151, 18, 45, 0.9);
+    transition: transform 0.15s ease-in-out;
+  }
+  
+  /* ---------- Hover Focus (HIGHLY recommended) ---------- */
+  .added:hover,
+  .removed:hover {
+    transform: scale(1.08);
+    cursor: pointer;
+  }
+  
+  /* ---------- Output Layout ---------- */
+  #output {
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  
+  #output h3 {
+    text-align: center;
+    margin-bottom: 10px;
+  }
+  
+  #output > div {
+    background: #ffffff;
+    padding: 15px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  

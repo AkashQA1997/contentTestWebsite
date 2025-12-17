@@ -1,57 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
   <title>Content Comparison Tool</title>
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <h1>Content Comparison Tool</h1>
 
-  <div class="notice" id="notice"></div>
-
   <form id="compareForm">
-    <div class="row">
-      <label class="checkbox">
-        <input type="checkbox" id="useBackend" />
-        Use backend fetch (requires hosted API, optional)
-      </label>
-    </div>
-
-    <div id="backendFields" class="panel">
-      <input type="text" name="url" placeholder="Website URL (backend mode)" />
-      <input type="text" name="locator" placeholder="Locator (CSS / ID / XPath)" />
-      <select name="type">
-        <option value="css">CSS Selector</option>
-        <option value="id">ID</option>
-        <option value="xpath">XPath</option>
-      </select>
-      <div class="hint">
-        Backend endpoint is <code>?api=https://YOUR_BACKEND</code> (then it calls <code>/compare</code> on that host).
-      </div>
-    </div>
-
-    <div class="grid2">
-      <div>
-        <h3>Expected</h3>
-        <textarea name="expected" placeholder="Paste expected content here..." rows="10" required></textarea>
-      </div>
-      <div>
-        <h3>Actual</h3>
-        <textarea name="actual" placeholder="Paste actual content here (manual mode)..." rows="10"></textarea>
-      </div>
-    </div>
-
+    <input type="text" name="url" placeholder="Website URL" required />
+    <input type="text" name="locator" placeholder="Enter locator (CSS, ID, XPath)" required />
+    <select name="type" required>
+      <option value="css">CSS Selector</option>
+      <option value="id">ID</option>
+      <option value="xpath">XPath</option>
+    </select>
+    <textarea name="pastedContent" placeholder="Paste expected content here..." rows="10" required></textarea>
     <button type="submit">Run Comparison</button>
   </form>
 
   <div id="status"></div>
   <div class="loader" id="loader"></div>
   <div id="output"></div>
+  
 
-  <script src="./app.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>
-
-

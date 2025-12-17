@@ -1,6 +1,9 @@
 # Content Comparison Tool
 
-Small web app that compares **expected (pasted) text** against **text extracted from a live webpage** (via Playwright), then shows a side-by-side diff highlighting additions/removals.
+Works in **two modes**:
+
+- **Manual mode (GitHub Pages compatible)**: paste **Expected** and **Actual** text, diff runs fully in the browser.
+- **Backend mode (optional)**: if you host the Node/Playwright API somewhere, the site can fetch the live page text via `POST /compare`.
 
 ## Requirements
 
@@ -22,19 +25,17 @@ Server starts on **`http://localhost:3000`**.
 
 ## How it works
 
-- The UI is served from `public/` (static files).
-- Submitting the form calls `POST /compare`.
-- The server uses Playwright (Chromium) to fetch text from the page using one of:
-  - CSS selector
-  - Element ID
-  - XPath
-- Both the pasted content and fetched content are normalized:
-  - Non‑breaking spaces → spaces
-  - Whitespace collapsed
-  - Trimmed
-- A character-level diff is produced and returned as HTML spans:
-  - `.added` highlights content present in **Actual** only
-  - `.removed` highlights content missing from **Actual** (present in Expected only)
+- The GitHub Pages UI lives in `root/`.
+- In **Manual mode**, the browser normalizes both inputs and highlights the changed section.
+- In **Backend mode**, the UI calls the hosted API endpoint (`/compare`) and renders the returned HTML diff.
+
+## GitHub Pages (publish from `/root`)
+
+Set your GitHub Pages source to the `root/` folder.
+
+- Manual mode works on Pages with no backend.
+- Backend mode requires appending `?api=...` to your Pages URL, for example:
+  - `https://USER.github.io/REPO/?api=https://YOUR_BACKEND`
 
 ## API
 
@@ -74,10 +75,11 @@ contentTestSite/
   server.js            # Express server + Playwright extraction + diff API
   package.json         # Dependencies + start script
   package-lock.json
-  public/              # Static frontend served by Express
-    index.html         # Form UI
-    app.js             # Form submit -> POST /compare, renders diff + status
+  root/                # GitHub Pages site (static)
+    index.html         # UI (manual + optional backend mode)
+    app.js             # In-browser compare + optional API call (?api=...)
     style.css          # Styling for layout + diff highlights
+  public/              # (legacy) older static UI (not used by server now)
   uploads/             # Local upload artifacts (currently not used by the server)
   results.json         # Example output/log data (not required to run)
   node_modules/        # Installed dependencies

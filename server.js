@@ -8,7 +8,8 @@ const PORT = 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static("public"));
+// Local dev: serve the GitHub Pages site from /root
+app.use(express.static("root"));
 
 // ----------------------------
 // UTIL: Normalize text (IMPORTANT)

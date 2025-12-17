@@ -2,28 +2,121 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Content Comparison Tool</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Unified QA Team | Content Comparison Tool</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Content Comparison Tool</h1>
+  <header class="topbar">
+    <div class="container topbar__inner">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">U</div>
+        <div class="brand__text">
+          <div class="brand__title">Unified QA Team</div>
+          <div class="brand__sub">Content Comparison Tool</div>
+        </div>
+      </div>
+      <div class="topbar__meta">
+        <div class="pill" id="apiPill" title="Backend API configuration">
+          <span class="dot" id="apiDot"></span>
+          <span id="apiLabel">Backend: not set</span>
+        </div>
+      </div>
+    </div>
+  </header>
 
-  <form id="compareForm">
-    <input type="text" name="url" placeholder="Website URL" required />
-    <input type="text" name="locator" placeholder="Enter locator (CSS, ID, XPath)" required />
-    <select name="type" required>
-      <option value="css">CSS Selector</option>
-      <option value="id">ID</option>
-      <option value="xpath">XPath</option>
-    </select>
-    <textarea name="pastedContent" placeholder="Paste expected content here..." rows="10" required></textarea>
-    <button type="submit">Run Comparison</button>
-  </form>
+  <main class="container">
+    <section class="hero">
+      <h1 class="hero__title">Compare pasted content vs live website text</h1>
+    </section>
 
-  <div id="status"></div>
-  <div class="loader" id="loader"></div>
-  <div id="output"></div>
-  
+    <section class="card">
+      <div class="card__header">
+        <div class="card__headerRow">
+          <div class="card__title">Test inputs</div>
+          <button class="infoBtn" type="button" id="howToBtn" aria-label="How to use" title="How to use">i</button>
+        </div>
+      </div>
+
+      <div id="runMeta" class="runmeta"></div>
+
+      <form id="compareForm" class="form">
+        <div class="form__grid">
+          <div class="field">
+            <label class="field__label" for="url">Website URL</label>
+            <input id="url" type="text" name="url" placeholder="https://example.com/page" required />
+          </div>
+
+          <div class="field">
+            <label class="field__label" for="type">Locator type</label>
+            <select id="type" name="type" required>
+              <option value="xpath">XPath</option>
+              <option value="css">CSS Selector</option>
+              <option value="id">ID</option>
+            </select>
+          </div>
+
+          <div class="field field--span2">
+            <label class="field__label" for="locator">Locator</label>
+            <input id="locator" type="text" name="locator" placeholder=".hero-title or main h1 or //*[@id='content']" required />
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field__label" for="pastedContent">Pasted (Expected)</label>
+          <textarea id="pastedContent" name="pastedContent" placeholder="Paste expected content here..." rows="10" required></textarea>
+        </div>
+
+        <div class="actions">
+          <button class="btn" type="submit">Run comparison</button>
+          <button class="btn btn--ghost" type="button" id="clearBtn">Clear</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="results">
+      <div id="status" class="status"></div>
+      <div class="loaderOverlay" id="loaderOverlay" aria-hidden="true">
+        <div class="loaderCard" role="status" aria-live="polite" aria-label="Running comparison">
+          <div class="loaderRing" aria-hidden="true"></div>
+          <div class="loaderText">
+            <div class="loaderTitle">Running comparison</div>
+            <div class="loaderSub">Fetching content and generating diff…</div>
+          </div>
+        </div>
+      </div>
+      <div id="output"></div>
+    </section>
+
+    <footer class="footer">
+      <div class="footer__inner">
+        <span>Unified QA Team</span>
+        <span class="footer__sep">•</span>
+        <span>Content Comparison</span>
+      </div>
+    </footer>
+  </main>
+
+  <div class="modalBackdrop" id="howToModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="howToTitle">
+      <div class="modal__head">
+        <div>
+          <div class="modal__title" id="howToTitle">How to use</div>
+          <div class="modal__sub">Unified QA Team — content compare</div>
+        </div>
+        <button class="modal__close" type="button" id="howToClose" aria-label="Close">✕</button>
+      </div>
+
+      <div class="modal__body">
+        <ol class="howto">
+          <li>Enter the <b>Website URL</b> you want to validate.</li>
+          <li>Select <b>Locator type</b> (default: XPath), then paste the locator value.</li>
+          <li>Paste the expected copy into <b>Pasted (Expected)</b>.</li>
+          <li>Click <b>Run comparison</b> to see the diff and mismatch %.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>

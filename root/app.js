@@ -2,6 +2,45 @@ const form = document.getElementById("compareForm");
 const output = document.getElementById("output");
 const loader = document.getElementById("loader");
 const status = document.getElementById("status");
+const runMeta = document.getElementById("runMeta");
+const apiPill = document.getElementById("apiPill");
+const apiDot = document.getElementById("apiDot");
+const apiLabel = document.getElementById("apiLabel");
+const clearBtn = document.getElementById("clearBtn");
+const howToBtn = document.getElementById("howToBtn");
+const howToModal = document.getElementById("howToModal");
+const howToClose = document.getElementById("howToClose");
+const loaderOverlay = document.getElementById("loaderOverlay");
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function computeMismatchPercent(expectedHtml, actualHtml) {
+  const expectedWrap = document.createElement("div");
+  expectedWrap.innerHTML = expectedHtml || "";
+
+  const actualWrap = document.createElement("div");
+  actualWrap.innerHTML = actualHtml || "";
+
+  const removedChars = Array.from(expectedWrap.querySelectorAll(".removed"))
+    .reduce((sum, el) => sum + (el.textContent || "").length, 0);
+
+  const addedChars = Array.from(actualWrap.querySelectorAll(".added"))
+    .reduce((sum, el) => sum + (el.textContent || "").length, 0);
+
+  const expectedLen = (expectedWrap.textContent || "").length;
+  const actualLen = (actualWrap.textContent || "").length;
+  const denom = Math.max(expectedLen, actualLen, 1);
+
+  const mismatch = ((removedChars + addedChars) / denom) * 100;
+  return Math.max(0, Math.min(100, mismatch));
+}
 
 function getApiBaseFromQuery() {
   const api = new URLSearchParams(window.location.search).get("api");
@@ -21,12 +60,61 @@ function getCompareUrl() {
   return "/compare";
 }
 
+function updateApiPill() {
+  if (!apiPill || !apiDot || !apiLabel) return;
+  const apiBase = getApiBaseFromQuery();
+  if (apiBase) {
+    apiDot.style.background = "rgba(109,255,180,0.92)";
+    apiLabel.textContent = `Backend: ${apiBase}`;
+  } else {
+    apiDot.style.background = "rgba(255,255,255,0.35)";
+    apiLabel.textContent = "Backend: not set";
+  }
+}
+
+updateApiPill();
+
+function setLoading(isLoading) {
+  if (loaderOverlay) {
+    loaderOverlay.classList.toggle("isOpen", isLoading);
+    loaderOverlay.setAttribute("aria-hidden", String(!isLoading));
+  }
+}
+
+function setHowToOpen(isOpen) {
+  if (!howToModal) return;
+  howToModal.classList.toggle("isOpen", isOpen);
+  howToModal.setAttribute("aria-hidden", String(!isOpen));
+}
+
+if (howToBtn) howToBtn.addEventListener("click", () => setHowToOpen(true));
+if (howToClose) howToClose.addEventListener("click", () => setHowToOpen(false));
+if (howToModal) {
+  howToModal.addEventListener("click", (e) => {
+    if (e.target === howToModal) setHowToOpen(false);
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") setHowToOpen(false);
+  });
+}
+
+if (clearBtn) {
+  clearBtn.addEventListener("click", () => {
+    form.reset();
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    updateApiPill();
+  });
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   output.innerHTML = "";
   status.innerHTML = "";
-  loader.style.display = "block";
+  if (runMeta) runMeta.innerHTML = "";
+  setLoading(true);
 
   const formData = new FormData(form);
   const url = formData.get("url").trim();
@@ -37,7 +125,7 @@ form.addEventListener("submit", async (e) => {
   try {
     new URL(url);
   } catch {
-    loader.style.display = "none";
+    setLoading(false);
     status.innerHTML = `<span class="fail">❌ Invalid URL</span>`;
     return;
   }
@@ -45,9 +133,9 @@ form.addEventListener("submit", async (e) => {
   try {
     const compareUrl = getCompareUrl();
     if (!compareUrl) {
-      loader.style.display = "none";
+      setLoading(false);
       status.innerHTML =
-        `<span class="fail">❌ GitHub Pages can’t run the backend. Add <b>?api=https://YOUR_BACKEND</b> to the URL (a hosted copy of this repo’s Node server) and try again.</span>`;
+        `<span class="fail">GitHub Pages can’t run the backend. Add <b>?api=https://YOUR_BACKEND</b> to the URL and try again.</span>`;
       return;
     }
 
@@ -58,7 +146,7 @@ form.addEventListener("submit", async (e) => {
     });
 
     const data = await res.json();
-    loader.style.display = "none";
+    setLoading(false);
 
     if (!res.ok) {
       status.innerHTML = `<span class="fail">❌ ${data.error}</span>`;
@@ -70,26 +158,36 @@ form.addEventListener("submit", async (e) => {
       data.expectedHtml.includes("removed") ||
       data.actualHtml.includes("added");
 
+    const mismatchPercent = computeMismatchPercent(data.expectedHtml, data.actualHtml);
+    const mismatchText = `Mismatch: ${mismatchPercent.toFixed(2)}%`;
+
     status.innerHTML = isFail
-      ? `<span class="fail">❌ FAILED – Content mismatch</span>`
-      : `<span class="pass">✅ PASSED – Content matches</span>`;
+      ? `<span class="fail">❌ FAILED – Content mismatch (${mismatchText})</span>`
+      : `<span class="pass">✅ PASSED – Content matches (${mismatchText})</span>`;
+
+    if (runMeta) {
+      runMeta.innerHTML = `
+        <div><b>URL:</b> ${escapeHtml(url)}</div>
+        <div><b>Locator:</b> ${escapeHtml(locator)} <b>Type:</b> ${escapeHtml(type)}</div>
+      `;
+    }
 
     // Side-by-side render
     output.innerHTML = `
-      <div style="display:flex; gap:20px">
-        <div style="width:50%">
-          <h3>Expected</h3>
+      <div class="diffGrid">
+        <div class="diffCol">
+          <h3>Pasted (Expected)</h3>
           <div>${data.expectedHtml}</div>
         </div>
-        <div style="width:50%">
-          <h3>Actual</h3>
+        <div class="diffCol">
+          <h3>From URL (Actual)</h3>
           <div>${data.actualHtml}</div>
         </div>
       </div>
     `;
 
   } catch (err) {
-    loader.style.display = "none";
+    setLoading(false);
     console.error(err);
     status.innerHTML = `<span class="fail">❌ Comparison failed</span>`;
   }

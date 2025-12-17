@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Content Comparison Tool</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <h1>Content Comparison Tool</h1>
+
+  <form id="compareForm">
+    <input type="text" name="url" placeholder="Website URL" required />
+    <input type="text" name="locator" placeholder="Enter locator (CSS, ID, XPath)" required />
+    <select name="type" required>
+      <option value="css">CSS Selector</option>
+      <option value="id">ID</option>
+      <option value="xpath">XPath</option>
+    </select>
+    <textarea name="pastedContent" placeholder="Paste expected content here..." rows="10" required></textarea>
+    <button type="submit">Run Comparison</button>
+  </form>
+
+  <div id="status"></div>
+  <div class="loader" id="loader"></div>
+  <div id="output"></div>
+  
+
+  <script src="app.js"></script>
+</body>
+</html>

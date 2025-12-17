@@ -1,0 +1,14 @@
+{
+  "name": "contenttestsite",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "diff": "^5.2.0",
+    "express": "^5.2.1",
+    "playwright": "^1.57.0"
+  }
+}

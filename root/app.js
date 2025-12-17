@@ -3,6 +3,24 @@ const output = document.getElementById("output");
 const loader = document.getElementById("loader");
 const status = document.getElementById("status");
 
+function getApiBaseFromQuery() {
+  const api = new URLSearchParams(window.location.search).get("api");
+  if (!api) return "";
+  return api.replace(/\/+$/, "");
+}
+
+function getCompareUrl() {
+  const apiBase = getApiBaseFromQuery();
+  if (apiBase) return `${apiBase}/compare`;
+
+  // GitHub Pages is static and does not support POST routes like /compare.
+  const isGitHubPagesHost = window.location.hostname.endsWith(".github.io");
+  if (isGitHubPagesHost) return "";
+
+  // Local dev / hosted server: same-origin works.
+  return "/compare";
+}
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
@@ -25,7 +43,15 @@ form.addEventListener("submit", async (e) => {
   }
 
   try {
-    const res = await fetch("/compare", {
+    const compareUrl = getCompareUrl();
+    if (!compareUrl) {
+      loader.style.display = "none";
+      status.innerHTML =
+        `<span class="fail">❌ GitHub Pages can’t run the backend. Add <b>?api=https://YOUR_BACKEND</b> to the URL (a hosted copy of this repo’s Node server) and try again.</span>`;
+      return;
+    }
+
+    const res = await fetch(compareUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, locator, type, pastedContent })

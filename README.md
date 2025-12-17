@@ -31,7 +31,15 @@ Server starts on **`http://localhost:3000`**.
 
 ## GitHub Pages (publish from `/root`)
 
-Set your GitHub Pages source to the `root/` folder.
+GitHub Pages “Deploy from a branch” only supports publishing from `/(root)` or `/docs` (not an arbitrary `/root` folder).
+
+This repo includes a GitHub Actions workflow that publishes the **`root/`** folder.
+
+### Steps
+
+- In GitHub: **Settings → Pages**
+  - **Build and deployment**: select **GitHub Actions**
+- Push to `main` (or run the workflow manually) and Pages will deploy `root/`.
 
 - Manual mode works on Pages with no backend.
 - Backend mode requires appending `?api=...` to your Pages URL, for example:

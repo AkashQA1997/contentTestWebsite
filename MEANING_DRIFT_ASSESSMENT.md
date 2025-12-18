@@ -4,6 +4,15 @@
 
 The Meaning Drift feature analyzes the **semantic quality** of your pasted content. It evaluates vocabulary diversity, content structure, and overall semantic richness to provide a quality score.
 
+### Formula
+```
+diversityScore = uniqueWords / totalWords
+driftFromIdeal = 1 - diversityScore
+lengthScore = min(1, totalWords / 50)
+lengthDrift = 1 - lengthScore
+combinedDrift = (driftFromIdeal × 0.7) + (lengthDrift × 0.3)
+driftScore = round(combinedDrift × 100)
+
 ## How It Works
 
 The assessment analyzes **only the pasted content** (not comparing it to the actual content from the URL). It uses two main metrics:

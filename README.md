@@ -2,18 +2,68 @@
 
 Works in **two modes**:
 
+> 📖 **For detailed information about Meaning Drift Assessment, see [MEANING_DRIFT_ASSESSMENT.md](./MEANING_DRIFT_ASSESSMENT.md)**
+
 - **Manual mode (GitHub Pages compatible)**: paste **Expected** and **Actual** text, diff runs fully in the browser.
 - **Backend mode (optional)**: if you host the Node/Playwright API somewhere, the site can fetch the live page text via `POST /compare`.
 
 ## Requirements
 
 - Node.js (npm)
+- OpenAI API key (optional, for AI-based semantic analysis double-check)
 
 ## Setup
 
 ```bash
 npm install
 ```
+
+### Optional: AI Verification (FREE Options Available!)
+
+For enhanced meaning drift analysis with AI double-checking, set one of these environment variables:
+
+#### 🆓 **FREE Options (No Credit Card Required):**
+
+1. **Hugging Face** (Recommended - Completely Free)
+   ```bash
+   HUGGINGFACE_API_KEY=your_huggingface_token_here
+   ```
+   Get free token: https://huggingface.co/settings/tokens
+   - ✅ No credit card needed
+   - ✅ Free forever
+   - ✅ Unlimited requests (rate limited)
+
+2. **Google Gemini** (Free Tier)
+   ```bash
+   GEMINI_API_KEY=your_gemini_key_here
+   ```
+   Get free key: https://makersuite.google.com/app/apikey
+   - ✅ Free tier: 60 requests/minute
+   - ✅ No credit card needed initially
+
+3. **Groq** (Free Tier - Very Fast)
+   ```bash
+   GROQ_API_KEY=your_groq_key_here
+   ```
+   Get free key: https://console.groq.com/keys
+   - ✅ Free tier available
+   - ✅ Very fast responses
+
+#### 💰 Paid Option:
+
+4. **OpenAI** (Paid)
+   ```bash
+   OPENAI_API_KEY=your_openai_key_here
+   ```
+   Get key: https://platform.openai.com/api-keys
+
+**How it works:**
+- The tool tries providers in order: Hugging Face → Gemini → Groq → OpenAI
+- Uses the first available API key found
+- Works perfectly without any API key using rule-based analysis only
+- AI verification provides a second opinion on semantic differences
+
+**Note:** Set only ONE API key (the one you want to use). The tool will automatically use the first one it finds.
 
 ## Run
 
@@ -89,9 +139,36 @@ Use it from Pages:
 ```json
 {
   "expectedHtml": "Expected side with <span class=\"removed\">…</span>",
-  "actualHtml": "Actual side with <span class=\"added\">…</span>"
+  "actualHtml": "Actual side with <span class=\"added\">…</span>",
+  "meaningDrift": {
+    "score": 25,
+    "summary": "Minor meaning differences detected"
+  },
+  "aiVerification": {
+    "score": 30,
+    "summary": "Some semantic variations detected",
+    "mismatch": false,
+    "confidence": 85,
+    "verified": true
+  },
+  "verificationNote": "ℹ️ Minor disagreement between analysis methods."
 }
 ```
+
+**Response Fields:**
+
+- `expectedHtml` (string): HTML with removed sections highlighted
+- `actualHtml` (string): HTML with added sections highlighted
+- `meaningDrift` (object): Rule-based semantic analysis
+  - `score` (number): Drift percentage (0-100)
+  - `summary` (string): Human-readable summary
+- `aiVerification` (object, optional): AI-based double-check (only if `OPENAI_API_KEY` is set)
+  - `score` (number): AI-calculated drift percentage
+  - `summary` (string): AI-generated summary
+  - `mismatch` (boolean): AI's mismatch detection
+  - `confidence` (number): AI confidence level (0-100)
+  - `verified` (boolean): Whether AI analysis completed
+- `verificationNote` (string, optional): Warning if rule-based and AI analyses disagree significantly
 
 ## Project structure
 

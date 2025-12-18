@@ -11,4 +11,7 @@ test-results/
 uploads/
 results.json
 
+# Environment variables
+.env
+
 

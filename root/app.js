@@ -161,9 +161,35 @@ form.addEventListener("submit", async (e) => {
     const mismatchPercent = computeMismatchPercent(data.expectedHtml, data.actualHtml);
     const mismatchText = `Mismatch: ${mismatchPercent.toFixed(2)}%`;
 
+    // Meaning drift information (rule-based)
+    const drift = data.meaningDrift || { score: 0, summary: "" };
+    const driftText = drift.score !== undefined 
+      ? `<div class="status__meta">🧠 Meaning drift (rule-based): <b>${drift.score}%</b>${drift.summary ? ` – ${escapeHtml(drift.summary)}` : ""}</div>`
+      : "";
+
+    // AI verification (double-check)
+    let aiText = "";
+    if (data.aiVerification) {
+      const ai = data.aiVerification;
+      const aiIcon = ai.verified ? "🤖" : "⚠️";
+      const aiConfidence = ai.confidence ? ` (confidence: ${ai.confidence}%)` : "";
+      const providerName = ai.provider ? ` [${ai.provider.toUpperCase()}]` : "";
+      aiText = `<div class="status__meta status__ai">${aiIcon} AI verification${providerName}: <b>${ai.score}%</b> drift${aiConfidence}${ai.summary ? ` – ${escapeHtml(ai.summary)}` : ""}</div>`;
+      
+      // Show AI mismatch status if different from rule-based
+      if (ai.mismatch !== undefined && ai.mismatch !== isFail) {
+        aiText += `<div class="status__meta status__warning">⚠️ AI analysis ${ai.mismatch ? "detects" : "does not detect"} content mismatch (disagrees with rule-based analysis)</div>`;
+      }
+    }
+
+    // Verification note if there's disagreement
+    const verificationNote = data.verificationNote 
+      ? `<div class="status__meta status__warning">${escapeHtml(data.verificationNote)}</div>`
+      : "";
+
     status.innerHTML = isFail
-      ? `<span class="fail">❌ FAILED – Content mismatch (${mismatchText})</span>`
-      : `<span class="pass">✅ PASSED – Content matches (${mismatchText})</span>`;
+      ? `<span class="fail">❌ FAILED – Content mismatch (${mismatchText})</span>${driftText}${aiText}${verificationNote}`
+      : `<span class="pass">✅ PASSED – Content matches (${mismatchText})</span>${driftText}${aiText}${verificationNote}`;
 
     if (runMeta) {
       runMeta.innerHTML = `

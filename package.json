@@ -8,7 +8,9 @@
   "dependencies": {
     "cors": "^2.8.5",
     "diff": "^5.2.0",
+    "dotenv": "^16.6.1",
     "express": "^5.2.1",
+    "natural": "^6.12.0",
     "playwright": "^1.57.0"
   }
 }

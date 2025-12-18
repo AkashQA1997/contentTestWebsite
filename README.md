@@ -97,7 +97,7 @@ This repo includes a GitHub Actions workflow that publishes the **`root/`** fold
 
 ## Free backend hosting (Render) — recommended: Docker
 
-Render’s “native” Node environment may fail installing Playwright OS dependencies (it tries to `su`/install packages).
+Render's "native" Node environment may fail installing Playwright OS dependencies (it tries to `su`/install packages).
 This repo includes a `Dockerfile` that uses the official Playwright image (browsers + deps included).
 
 ### Steps
@@ -111,6 +111,10 @@ After deploy, Render gives you a URL like `https://YOUR-SERVICE.onrender.com`.
 Use it from Pages:
 
 - `https://USER.github.io/REPO/?api=https://YOUR-SERVICE.onrender.com`
+
+> ⚠️ **Troubleshooting**: If you get `ERR_CONNECTION_CLOSED` errors, see [RENDER_TROUBLESHOOTING.md](./RENDER_TROUBLESHOOTING.md) for solutions.
+
+> 💡 **Alternative**: For always-free hosting (no sleeping), see [ORACLE_CLOUD_DEPLOYMENT.md](./ORACLE_CLOUD_DEPLOYMENT.md)
 
 ## API
 

@@ -141,17 +141,31 @@ form.addEventListener("submit", async (e) => {
 
     const res = await fetch(compareUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, locator, type, pastedContent })
+      headers: { 
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ url, locator, type, pastedContent }),
+      mode: 'cors', // Explicitly enable CORS
+      cache: 'no-cache'
     });
+
+    // Check response status before parsing
+    if (!res.ok) {
+      const errorText = await res.text();
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: errorText || `HTTP ${res.status}: ${res.statusText}` };
+      }
+      setLoading(false);
+      status.innerHTML = `<span class="fail">❌ ${errorData.error || 'Request failed'}</span>`;
+      return;
+    }
 
     const data = await res.json();
     setLoading(false);
-
-    if (!res.ok) {
-      status.innerHTML = `<span class="fail">❌ ${data.error}</span>`;
-      return;
-    }
 
     // PASS / FAIL decision
     const isFail =
@@ -214,7 +228,31 @@ form.addEventListener("submit", async (e) => {
 
   } catch (err) {
     setLoading(false);
-    console.error(err);
-    status.innerHTML = `<span class="fail">❌ Comparison failed</span>`;
+    console.error("Comparison error:", err);
+    
+    // More detailed error messages for connection issues
+    let errorMsg = "❌ Comparison failed";
+    const apiBase = getApiBaseFromQuery();
+    
+    if (err.message && (err.message.includes("Failed to fetch") || err.message.includes("ERR_CONNECTION_CLOSED") || err.name === "TypeError")) {
+      if (apiBase) {
+        errorMsg = `❌ Cannot connect to backend at ${escapeHtml(apiBase)}<br>
+          <div style="margin-top: 8px; font-size: 13px; line-height: 1.6;">
+            <b>Possible issues:</b><br>
+            • Render service is sleeping (free tier sleeps after 15 min - first request takes ~30s)<br>
+            • Check if backend URL is correct<br>
+            • Verify the service is running in Render dashboard<br>
+            • Try accessing <a href="${escapeHtml(apiBase)}/health" target="_blank">${escapeHtml(apiBase)}/health</a> directly
+          </div>`;
+      } else {
+        errorMsg = `❌ No backend API configured. Add <b>?api=https://YOUR_RENDER_URL</b> to the URL`;
+      }
+    } else if (err.message && (err.message.includes("NetworkError") || err.message.includes("network"))) {
+      errorMsg = "❌ Network error - check your internet connection";
+    } else {
+      errorMsg = `❌ Error: ${err.message || err.toString()}`;
+    }
+    
+    status.innerHTML = `<span class="fail">${errorMsg}</span>`;
   }
 });

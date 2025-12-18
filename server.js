@@ -17,7 +17,13 @@ console.log("  GEMINI_API_KEY:", process.env.GEMINI_API_KEY ? "✅ Found" : "❌
 console.log("  GROQ_API_KEY:", process.env.GROQ_API_KEY ? "✅ Found" : "❌ Not found");
 console.log("  OPENAI_API_KEY:", process.env.OPENAI_API_KEY ? "✅ Found" : "❌ Not found");
 
-app.use(cors());
+// CORS configuration - allow all origins for GitHub Pages
+app.use(cors({
+  origin: '*', // Allow all origins (GitHub Pages, localhost, etc.)
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false
+}));
 app.use(express.json());
 // Local dev: serve the GitHub Pages site from /root (absolute path so "/" always works)
 const __filename = fileURLToPath(import.meta.url);

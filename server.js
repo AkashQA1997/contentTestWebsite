@@ -58,6 +58,7 @@ app.get("/", (_req, res) => {
 function normalizeText(text) {
   return text
     .replace(/\u00A0/g, " ")   // non-breaking spaces
+    .replace(/\u2019/g, "'")   // normalize curly apostrophe (') to straight apostrophe (')
     .replace(/\s+/g, " ")     // collapse all whitespace
     .trim();
 }

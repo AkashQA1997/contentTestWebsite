@@ -14,7 +14,8 @@ Your GitHub Pages URL should include the Render backend:
 https://yourusername.github.io/contentTestSite/?api=https://your-service.onrender.com
 ```
 
-**Important**: 
+**Important**:
+
 - Use `https://` (not `http://`)
 - Don't include trailing slash: `https://service.onrender.com` ✅ (not `https://service.onrender.com/` ❌)
 - The `?api=` parameter must be in the URL
@@ -24,11 +25,13 @@ https://yourusername.github.io/contentTestSite/?api=https://your-service.onrende
 **Problem**: Render's free tier services sleep after 15 minutes of inactivity.
 
 **Solution**:
+
 - First request after sleep takes **~30 seconds** to wake up
 - Wait 30-60 seconds and try again
 - The service will stay awake for 15 minutes after first request
 
 **To prevent sleeping**:
+
 - Upgrade to paid plan ($7/month) for always-on service
 - Or use a service like UptimeRobot to ping your service every 5 minutes
 
@@ -45,12 +48,14 @@ https://yourusername.github.io/contentTestSite/?api=https://your-service.onrende
 The backend should have CORS enabled (already configured in `server.js`):
 
 ```javascript
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: false
-}));
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: false,
+  }),
+);
 ```
 
 ### 5. Verify Environment Variables in Render
@@ -86,6 +91,7 @@ If these don't work, the backend has an issue.
 ## Step-by-Step Debugging
 
 ### Step 1: Verify Backend URL
+
 ```bash
 # In browser, test:
 https://your-service.onrender.com/health
@@ -96,6 +102,7 @@ https://your-service.onrender.com/health
 **If it fails**: Backend is not running or has errors
 
 ### Step 2: Check GitHub Pages URL
+
 Make sure your GitHub Pages URL includes the `?api=` parameter:
 
 ```
@@ -105,6 +112,7 @@ Make sure your GitHub Pages URL includes the `?api=` parameter:
 ```
 
 ### Step 3: Check Browser Console
+
 1. Open GitHub Pages site
 2. Press `F12` to open Developer Tools
 3. Go to **Console** tab
@@ -135,23 +143,29 @@ curl -X POST https://your-service.onrender.com/compare \
 ## Common Issues and Solutions
 
 ### Issue: "Service is sleeping"
+
 **Solution**: Wait 30 seconds for first request, or upgrade to paid plan
 
 ### Issue: "CORS error"
+
 **Solution**: Already fixed in code - make sure you're using the latest version
 
 ### Issue: "404 Not Found"
+
 **Solution**: Check the URL - make sure it's `https://service.onrender.com` (not `.com/`)
 
 ### Issue: "500 Internal Server Error"
+
 **Solution**: Check Render logs for specific error messages
 
 ### Issue: "Timeout"
+
 **Solution**: Render free tier has timeout limits. First request after sleep takes longer.
 
 ## Alternative: Use Oracle Cloud (Always Free)
 
 If Render continues to have issues, consider switching to Oracle Cloud Always Free:
+
 - No sleeping
 - Always available
 - See `ORACLE_CLOUD_DEPLOYMENT.md` for setup
@@ -174,4 +188,3 @@ If Render continues to have issues, consider switching to Oracle Cloud Always Fr
 - [ ] Waited 30 seconds if service was sleeping
 - [ ] Checked browser console for errors
 - [ ] Verified CORS is enabled in backend
-

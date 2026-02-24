@@ -79,6 +79,52 @@ Server starts on **`http://localhost:3000`**.
 - In **Manual mode**, the browser normalizes both inputs and highlights the changed section.
 - In **Backend mode**, the UI calls the hosted API endpoint (`/compare`) and renders the returned HTML diff.
 
+### Meaning drift calculation (rule‑based – pasted content only)
+
+The **Meaning Drift** score shown in the UI is currently **purely rule‑based** and is computed **only on the “Pasted (Expected)” text**, not by comparing it to the live page text.
+
+- **Step 1 – Tokenization & cleaning**
+  - Lower‑case the pasted text
+  - Tokenize into words using `natural.WordTokenizer`
+  - Remove:
+    - very short tokens (length ≤ 2)
+    - stop words from `natural.stopwords`
+  - Stem remaining words with `natural.PorterStemmer`
+
+- **Step 2 – Word diversity**
+  - Let:
+    - `totalWords` = number of stemmed tokens
+    - `uniqueWords` = number of distinct stemmed tokens
+  - Compute **word diversity**:
+    - `wordDiversity = uniqueWords / totalWords`  (range \(0–1\); higher = richer vocabulary)
+
+- **Step 3 – Length factor**
+  - Compute a simple **length score**:
+    - `lengthScore = min(1, totalWords / 50)`
+      - At ~50+ meaningful words, lengthScore ≈ 1 (no penalty for being “too short”)
+      - Very short texts get a lower lengthScore
+  - Convert to **length drift**:
+    - `lengthDrift = 1 - lengthScore`
+
+- **Step 4 – Final drift score (0–100)**
+  - First compute a **diversity drift** (how far from ideal diversity):
+    - `driftFromIdeal = 1 - wordDiversity`
+  - Combine diversity + length:
+    - `combinedDrift = driftFromIdeal * 0.7 + lengthDrift * 0.3`
+  - Convert to a **0–100 Meaning Drift score**:
+    - `driftScore = round( clamp(combinedDrift, 0, 1) * 100 )`
+
+Interpretation (as shown in the summary text):
+
+- `0–19`  → *High semantic quality* – rich vocabulary, good structure
+- `20–39` → *Good semantic quality*
+- `40–59` → *Moderate semantic quality* – some repetition / limited vocabulary
+- `60–79` → *Low semantic quality* – significant repetition or poor structure
+- `80–100` → *Very low semantic quality* – highly repetitive or minimal meaningful content
+
+The summary also includes the raw counts:  
+`(<uniqueWords> unique words, <totalWords> total words)`.
+
 ## GitHub Pages (publish from `/root`)
 
 GitHub Pages “Deploy from a branch” only supports publishing from `/(root)` or `/docs` (not an arbitrary `/root` folder).

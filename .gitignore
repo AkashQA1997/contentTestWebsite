@@ -1,0 +1,17 @@
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Playwright
+playwright-report/
+test-results/
+
+# Local artifacts
+uploads/
+results.json
+
+# Environment variables
+.env
+
+

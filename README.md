@@ -1,8 +1,6 @@
 # Content Comparison Tool
 
-Works in **two modes**:
-
-> 📖 **For detailed information about Meaning Drift Assessment, see [MEANING_DRIFT_ASSESSMENT.md](./MEANING_DRIFT_ASSESSMENT.md)**
+-Works in **two modes**:
 
 - **Manual mode (GitHub Pages compatible)**: paste **Expected** and **Actual** text, diff runs fully in the browser.
 - **Backend mode (optional)**: if you host the Node/Playwright API somewhere, the site can fetch the live page text via `POST /compare`.
@@ -18,52 +16,9 @@ Works in **two modes**:
 npm install
 ```
 
-### Optional: AI Verification (FREE Options Available!)
+### Optional: AI verification
 
-For enhanced meaning drift analysis with AI double-checking, set one of these environment variables:
-
-#### 🆓 **FREE Options (No Credit Card Required):**
-
-1. **Hugging Face** (Recommended - Completely Free)
-   ```bash
-   HUGGINGFACE_API_KEY=your_huggingface_token_here
-   ```
-   Get free token: https://huggingface.co/settings/tokens
-   - ✅ No credit card needed
-   - ✅ Free forever
-   - ✅ Unlimited requests (rate limited)
-
-2. **Google Gemini** (Free Tier)
-   ```bash
-   GEMINI_API_KEY=your_gemini_key_here
-   ```
-   Get free key: https://makersuite.google.com/app/apikey
-   - ✅ Free tier: 60 requests/minute
-   - ✅ No credit card needed initially
-
-3. **Groq** (Free Tier - Very Fast)
-   ```bash
-   GROQ_API_KEY=your_groq_key_here
-   ```
-   Get free key: https://console.groq.com/keys
-   - ✅ Free tier available
-   - ✅ Very fast responses
-
-#### 💰 Paid Option:
-
-4. **OpenAI** (Paid)
-   ```bash
-   OPENAI_API_KEY=your_openai_key_here
-   ```
-   Get key: https://platform.openai.com/api-keys
-
-**How it works:**
-- The tool tries providers in order: Hugging Face → Gemini → Groq → OpenAI
-- Uses the first available API key found
-- Works perfectly without any API key using rule-based analysis only
-- AI verification provides a second opinion on semantic differences
-
-**Note:** Set only ONE API key (the one you want to use). The tool will automatically use the first one it finds.
+The server focuses on character-level comparison. AI-based semantic verification is optional and not required for core functionality.
 
 ## Run
 
@@ -78,52 +33,64 @@ Server starts on **`http://localhost:3000`**.
 - The GitHub Pages UI lives in `root/`.
 - In **Manual mode**, the browser normalizes both inputs and highlights the changed section.
 - In **Backend mode**, the UI calls the hosted API endpoint (`/compare`) and renders the returned HTML diff.
+ - In **Backend mode**, the UI calls the hosted API endpoint (`/compare`) and renders the returned HTML diff.
 
-### Meaning drift calculation (rule‑based – pasted content only)
+## Content Quality Index (CQI) & Additional Analyses
 
-The **Meaning Drift** score shown in the UI is currently **purely rule‑based** and is computed **only on the “Pasted (Expected)” text**, not by comparing it to the live page text.
+The backend now computes a Content Quality Index (CQI) for the pasted (expected) content and several supplementary checks. These do not affect the character-level comparison/diff — `expectedHtml` and `actualHtml` are unchanged.
 
-- **Step 1 – Tokenization & cleaning**
-  - Lower‑case the pasted text
-  - Tokenize into words using `natural.WordTokenizer`
-  - Remove:
-    - very short tokens (length ≤ 2)
-    - stop words from `natural.stopwords`
-  - Stem remaining words with `natural.PorterStemmer`
+CQI formula (final score 0–100):
+- Vocabulary richness (unique words / total words) — weight 40%
+- Readability — weight 30% (uses `readability-scores` package; Flesch–Kincaid grade is mapped to 0–1 where lower grade → higher score; fallback: average sentence length)
+- Length score — weight 30% (100+ words → full score)
 
-- **Step 2 – Word diversity**
-  - Let:
-    - `totalWords` = number of stemmed tokens
-    - `uniqueWords` = number of distinct stemmed tokens
-  - Compute **word diversity**:
-    - `wordDiversity = uniqueWords / totalWords`  (range \(0–1\); higher = richer vocabulary)
+Combined score = round(clamp(vocab*0.4 + readability*0.3 + length*0.3, 0, 1) * 100)
 
-- **Step 3 – Length factor**
-  - Compute a simple **length score**:
-    - `lengthScore = min(1, totalWords / 50)`
-      - At ~50+ meaningful words, lengthScore ≈ 1 (no penalty for being “too short”)
-      - Very short texts get a lower lengthScore
-  - Convert to **length drift**:
-    - `lengthDrift = 1 - lengthScore`
+CQI output:
+- `cqi.score` (number): 0–100
+- `cqi.summary` (string): Excellent / Good / Fair / Poor
+- `cqi.details`: component values (totalWords, uniqueWords, vocabRatio, readabilityScore, lengthScore) and raw `readabilityDetails` from the library.
 
-- **Step 4 – Final drift score (0–100)**
-  - First compute a **diversity drift** (how far from ideal diversity):
-    - `driftFromIdeal = 1 - wordDiversity`
-  - Combine diversity + length:
-    - `combinedDrift = driftFromIdeal * 0.7 + lengthDrift * 0.3`
-  - Convert to a **0–100 Meaning Drift score**:
-    - `driftScore = round( clamp(combinedDrift, 0, 1) * 100 )`
+Additional analyses included in the `/compare` response:
 
-Interpretation (as shown in the summary text):
+- SEO keyword optimization (`seo`):
+  - If you provide `keywords` in the request body they are used; otherwise the server extracts top 5 candidate keywords from the pasted content.
+  - Returns per-keyword counts, density, a coverage fraction and a composite score that favors presence and reasonable density (~1–3%).
 
-- `0–19`  → *High semantic quality* – rich vocabulary, good structure
-- `20–39` → *Good semantic quality*
-- `40–59` → *Moderate semantic quality* – some repetition / limited vocabulary
-- `60–79` → *Low semantic quality* – significant repetition or poor structure
-- `80–100` → *Very low semantic quality* – highly repetitive or minimal meaningful content
+- Engagement metrics (`engagement`):
+  - Simple signals: headings, lists, CTAs (calls-to-action), links, sentence count.
+  - Returns a score (0–100) and counts used to compute it.
 
-The summary also includes the raw counts:  
-`(<uniqueWords> unique words, <totalWords> total words)`.
+- Duplicate content (`duplication`):
+  - Internal duplication: sentence-level duplicate ratio.
+  - Overlap with actual page: sentence overlap ratio.
+  - Returns a duplication score and details.
+
+- Broken links (`brokenLinks`):
+  - Finds URLs in pasted content and performs HEAD requests (with a timeout) to check reachability.
+  - Returns per-URL status and an overall reachable score.
+  - Note: this performs network calls and may affect response time if many URLs or slow hosts.
+
+- Intent relevance (`intentRelevance`):
+  - Computes a simple cosine similarity of token frequencies between pasted and actual content.
+  - Returned as a 0–100 score and a short summary (High / Moderate / Low relevance).
+
+Sample expanded response (abridged):
+
+```json
+{
+  "expectedHtml": "...",
+  "actualHtml": "...",
+  "cqi": { "score": 72, "summary": "Good content quality", "details": { /* ... */ } },
+  "seo": { "score": 64, "keywords": [ /* ... */ ], "coverage": 0.6 },
+  "engagement": { "score": 55, "details": { "headings": 2, "lists": 1, "ctaCount": 1 } },
+  "duplication": { "score": 85, "details": { "internalDupRatio": 0.01, "overlapRatio": 0.2 } },
+  "brokenLinks": { "score": 100, "details": { "urls": [] } },
+  "intentRelevance": { "score": 72, "summary": "High relevance" }
+}
+```
+
+If you'd like different weights, additional checks (engagement by scroll-depth estimates, social share signals), or to include external SEO keyword lists / site-wide duplicate checks, tell me which priorities to emphasize and I will adjust the scoring and README accordingly.
 
 ## GitHub Pages (publish from `/root`)
 
@@ -189,19 +156,7 @@ Use it from Pages:
 ```json
 {
   "expectedHtml": "Expected side with <span class=\"removed\">…</span>",
-  "actualHtml": "Actual side with <span class=\"added\">…</span>",
-  "meaningDrift": {
-    "score": 25,
-    "summary": "Minor meaning differences detected"
-  },
-  "aiVerification": {
-    "score": 30,
-    "summary": "Some semantic variations detected",
-    "mismatch": false,
-    "confidence": 85,
-    "verified": true
-  },
-  "verificationNote": "ℹ️ Minor disagreement between analysis methods."
+  "actualHtml": "Actual side with <span class=\"added\">…</span>"
 }
 ```
 
@@ -209,16 +164,6 @@ Use it from Pages:
 
 - `expectedHtml` (string): HTML with removed sections highlighted
 - `actualHtml` (string): HTML with added sections highlighted
-- `meaningDrift` (object): Rule-based semantic analysis
-  - `score` (number): Drift percentage (0-100)
-  - `summary` (string): Human-readable summary
-- `aiVerification` (object, optional): AI-based double-check (only if `OPENAI_API_KEY` is set)
-  - `score` (number): AI-calculated drift percentage
-  - `summary` (string): AI-generated summary
-  - `mismatch` (boolean): AI's mismatch detection
-  - `confidence` (number): AI confidence level (0-100)
-  - `verified` (boolean): Whether AI analysis completed
-- `verificationNote` (string, optional): Warning if rule-based and AI analyses disagree significantly
 
 ## Project structure
 

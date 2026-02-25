@@ -65,7 +65,7 @@ const app = express();
 const PORT = 3000;
 // Configurable parameters (via env)
 const SAMPLE_WORD_LIMIT = Number(process.env.SAMPLE_WORD_LIMIT) || 5000;
-const LENGTH_SCALE = Number(process.env.LENGTH_SCALE) || 1000; // larger -> depth matters more
+const LENGTH_SCALE = Number(process.env.LENGTH_SCALE) || 200; // words at which length score saturates (~63% at scale, ~86% at 2×scale)
 const BROKEN_LINK_MODE = process.env.BROKEN_LINK_MODE || "fast"; // "off" | "fast" | "sync"
 const BROKEN_LINK_MAX_URLS = Number(process.env.BROKEN_LINK_MAX_URLS) || 5;
 const BROKEN_LINK_TIMEOUT_MS = Number(process.env.BROKEN_LINK_TIMEOUT_MS) || (BROKEN_LINK_MODE === "fast" ? 1000 : 3000);
@@ -192,60 +192,129 @@ function calculateCQI(pastedContent) {
   const k = 20; // pseudo-count (higher = stronger shrinkage)
   const vocabRatio = (uniqueSample + k * prior) / (Math.max(1, sampleSize) + k); // 0..1
 
-  // --- Readability: robust mapping using readability-scores (logistic mapping)
+  // --- Readability: sentence-length based (primary) + FK grade (reference only)
+  //
+  // WHY sentence length, not Flesch-Kincaid:
+  //   IT/enterprise content uses technically precise vocabulary (cybersecurity, infrastructure,
+  //   regulatory, etc.) that is inherently multi-syllabic. Flesch-Kincaid penalises these words
+  //   regardless of how clearly they are written, routinely returning grade 16–20 for normal
+  //   professional IT copy. That is not a readability problem — it is a vocabulary domain mismatch.
+  //   Content writers in an IT organisation can and should control sentence length; they cannot
+  //   simplify mandatory technical terms. Sentence length is therefore the correct readability
+  //   signal here.
+  //
+  // Formula:
+  //   readability = 1 / (1 + exp((avgSentLen - 18) / 5))
+  //   mu  = 18  → 18-word sentences are the neutral point (0.50); shorter scores higher.
+  //   sigma = 5 → gradual curve; each extra word doesn't cause a sharp drop.
+  //
+  // Benchmark:
+  //   ≤ 10 words/sentence → 0.87  (crisp, scannable)
+  //   14 words/sentence   → 0.69  (clear professional writing)
+  //   18 words/sentence   → 0.50  (neutral — acceptable but room to improve)
+  //   22 words/sentence   → 0.31  (too long — recommend splitting)
+  //   26 words/sentence   → 0.18  (hard to follow)
+  //
   let readability = 0;
   let readabilityDetails = null;
   try {
     const rd = readabilityScores(textSample);
-    readabilityDetails = rd || null;
-    const fk = (rd && typeof rd.fleschKincaid === "number") ? rd.fleschKincaid : null;
-    if (fk !== null) {
-      // Logistic mapping: mu=12, sigma=4 (tuneable)
-      const mu = 12;
-      const sigma = 4;
-      readability = 1 / (1 + Math.exp((fk - mu) / sigma));
-    } else {
-      // Fallback: average sentence length
-      const sentences = textSample.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
-      const avgSentenceWords = sentences.length > 0 ? words.filter(Boolean).length / sentences.length : sampleSize;
-      readability = 1 - Math.min(avgSentenceWords / 30, 1);
-    }
-  } catch (err) {
-    const sentences = textSample.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
-    const avgSentenceWords = sentences.length > 0 ? words.filter(Boolean).length / sentences.length : sampleSize;
-    readability = 1 - Math.min(avgSentenceWords / 30, 1);
-  }
+    readabilityDetails = rd || null;             // store FK etc. for the "Show calculation" display
+  } catch (_) { /* library error — details unavailable */ }
+
+  const sentences = textSample.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+  const avgSentenceWords = sentences.length > 0
+    ? words.filter(Boolean).length / sentences.length
+    : sampleSize;
+  readability = 1 / (1 + Math.exp((avgSentenceWords - 18) / 5));
 
   // --- Length: smooth saturating function (diminishing returns)
   const lengthScore = 1 - Math.exp(-totalWords / LENGTH_SCALE);
 
-  // --- Confidence: downweight vocab/length when text is small
-  const confidence = Math.min(1, totalWords / 100); // <100 words -> partial confidence
-  const baseWeights = { vocab: 0.4, read: 0.3, length: 0.3 };
-  const vocabWeight = baseWeights.vocab * confidence;
-  const lengthWeight = baseWeights.length * confidence;
-  const readWeight = 1 - (vocabWeight + lengthWeight); // readability absorbs remaining weight
+  // --- Section type detection — calibrated for IT / enterprise content
+  // Targets reflect professional content quality standards for a technology organisation.
+  let sectionType, targetCQI, sectionNote;
+  if (totalWords < 50) {
+    sectionType = "Hero / Tagline";
+    targetCQI   = 55;
+    sectionNote = "Short-form copy (< 50 words). Scored on vocabulary and readability only — length is not penalised.";
+  } else if (totalWords < 100) {
+    sectionType = "Service Card / Feature";
+    targetCQI   = 55;
+    sectionNote = "Short service or feature description (50–99 words). Focus on clear, specific language. Aim for CQI ≥ 55.";
+  } else if (totalWords < 200) {
+    sectionType = "Section Intro / About";
+    targetCQI   = 60;
+    sectionNote = "Short body section (100–199 words). Should introduce the topic clearly with diverse vocabulary. Aim for CQI ≥ 60.";
+  } else if (totalWords < 500) {
+    sectionType = "Page Section / Landing Copy";
+    targetCQI   = 65;
+    sectionNote = "Core page section (200–499 words). Full vocabulary, readability, and depth are evaluated. Aim for CQI ≥ 65.";
+  } else if (totalWords < 1000) {
+    sectionType = "Case Study / Blog Post";
+    targetCQI   = 70;
+    sectionNote = "Long-form content (500–999 words). High vocabulary diversity and readability expected. Aim for CQI ≥ 70.";
+  } else {
+    sectionType = "Technical Article / Whitepaper";
+    targetCQI   = 72;
+    sectionNote = "In-depth technical content (1000+ words). Should demonstrate depth, variety, and structured clarity. Aim for CQI ≥ 72.";
+  }
+
+  // --- Fully dynamic weights — no hardcoded thresholds
+  // The length score (1 − exp(−words/SCALE)) already scales continuously:
+  //   30 words  → lengthScore ≈ 0.14 → length contribution ≈ 0.042  (naturally small)
+  //   150 words → lengthScore ≈ 0.53 → length contribution ≈ 0.159  (meaningful)
+  //   300 words → lengthScore ≈ 0.78 → length contribution ≈ 0.234  (strong)
+  // So there is no need for any special-case threshold: all weights stay constant
+  // and the exponential saturation of lengthScore handles the "short text" case.
+  const vocabWeight  = 0.4;
+  const readWeight   = 0.3;
+  const lengthWeight = 0.3;
 
   const combined = (vocabRatio * vocabWeight) + (readability * readWeight) + (lengthScore * lengthWeight);
   const score = Math.round(Math.max(0, Math.min(1, combined)) * 100);
 
+  // Section-aware summary: compare score against the section's target CQI
   let summary = "";
-  if (score >= 80) summary = "Excellent content quality";
-  else if (score >= 60) summary = "Good content quality";
-  else if (score >= 40) summary = "Fair content quality";
-  else summary = "Poor content quality";
+  let status  = "";   // "meets" | "near" | "needs_improvement" | "poor"
 
+  const gap = targetCQI - score; // positive = below target
+
+  if (score >= targetCQI + 20) {
+    status  = "exceeds";
+    summary = `Excellent — well above the ${sectionType} target (CQI ≥ ${targetCQI})`;
+  } else if (score >= targetCQI) {
+    status  = "meets";
+    summary = `Meets the ${sectionType} content quality target (CQI ≥ ${targetCQI})`;
+  } else if (gap <= 10) {
+    status  = "near";
+    summary = `Almost there — ${gap} point${gap !== 1 ? "s" : ""} below the ${sectionType} target (CQI ≥ ${targetCQI}). Minor improvements needed.`;
+  } else if (gap <= 25) {
+    status  = "needs_improvement";
+    summary = `Needs improvement — ${gap} points below the ${sectionType} target (CQI ≥ ${targetCQI}). See suggestions below.`;
+  } else {
+    status  = "poor";
+    summary = `Significantly below the ${sectionType} target (CQI ≥ ${targetCQI}). Content needs substantial rework.`;
+  }
+
+  // reliable = false for very short texts where scores are less meaningful
   const reliable = totalWords >= 30;
 
   return {
     score,
     summary,
+    status,
     reliable,
+    sectionType,
+    targetCQI,
+    sectionNote,
     details: {
       totalWords,
       sampleSize,
       sampled: useSampling,
       uniqueSample,
+      avgSentenceWords: Number(avgSentenceWords.toFixed(1)),
+      sentenceCount: sentences.length,
       vocabRatio: Number(vocabRatio.toFixed(3)),
       readabilityScore: Number(readability.toFixed(3)),
       lengthScore: Number(lengthScore.toFixed(3)),

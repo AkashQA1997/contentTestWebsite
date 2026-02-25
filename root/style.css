@@ -746,4 +746,128 @@ textarea { resize: vertical; min-height: 180px; }
   background: rgba(255,255,255,0.96);
   margin-top: 8px;
 }
+
+/* ── Word count bar ────────────────────────── */
+.wordCountBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: rgba(30,41,59,0.55);
+  flex-wrap: wrap;
+}
+#wordCountNum {
+  font-weight: 600;
+  color: rgba(30,41,59,0.75);
+}
+.wordCountSection {
+  font-weight: 600;
+  font-size: 12px;
+}
+.wordCountWarning {
+  color: #f59e0b;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+/* ── Section badge + target line ─────────────── */
+.sectionBadge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.10);
+  color: #6366f1;
+  margin-left: 10px;
+  vertical-align: middle;
+  cursor: default;
+}
+.sectionTarget {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  margin-bottom: 10px;
+}
+.sectionTarget--exceeds {
+  background: rgba(16,185,129,0.12);
+  color: #047857;
+  border: 1px solid rgba(16,185,129,0.35);
+}
+.sectionTarget--pass {
+  background: rgba(16,185,129,0.08);
+  color: #059669;
+  border: 1px solid rgba(16,185,129,0.25);
+}
+.sectionTarget--near {
+  background: rgba(251,191,36,0.10);
+  color: #92400e;
+  border: 1px solid rgba(251,191,36,0.35);
+}
+.sectionTarget--fail {
+  background: rgba(245,158,11,0.10);
+  color: #b45309;
+  border: 1px solid rgba(245,158,11,0.30);
+}
+.sectionTarget--poor {
+  background: rgba(239,68,68,0.09);
+  color: #b91c1c;
+  border: 1px solid rgba(239,68,68,0.28);
+}
+/* warn span for status bar (near target) */
+.status .warn {
+  color: #92400e;
+  background: rgba(251,191,36,0.13);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+.metric__note {
+  font-size: 11px;
+  color: rgba(30,41,59,0.5);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* ── Wide modal variant (CQI standards) ─────── */
+.modal--wide {
+  max-width: 780px;
+  width: 96vw;
+}
+.modal__intro {
+  font-size: 13.5px;
+  color: rgba(30,41,59,0.75);
+  margin: 0 0 12px;
+  line-height: 1.6;
+}
+
+/* ── Info table (CQI standards modal) ────────── */
+.infoTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.infoTable th {
+  background: rgba(99,102,241,0.08);
+  color: #4338ca;
+  font-weight: 700;
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 2px solid rgba(99,102,241,0.18);
+}
+.infoTable td {
+  padding: 7px 10px;
+  border-bottom: 1px solid rgba(15,23,42,0.07);
+  color: rgba(30,41,59,0.82);
+  vertical-align: top;
+  line-height: 1.45;
+}
+.infoTable tbody tr:hover td {
+  background: rgba(99,102,241,0.04);
+}
+.infoTable__row--hero td {
+  background: rgba(245,158,11,0.05);
+}
   

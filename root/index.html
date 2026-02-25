@@ -44,7 +44,7 @@
         <div class="card__headerRow">
           <div class="card__title">Test inputs</div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <button class="btn btn--cta" type="button" id="toggleModeBtn" aria-label="Switch mode">Check Content CQI Only</button>
+            <button class="btn btn--cta" type="button" id="toggleModeBtn" aria-label="Switch mode">Check CQI Score Only</button>
             <button class="infoBtn" type="button" id="howToBtn" aria-label="How to use" title="How to use">i</button>
           </div>
         </div>
@@ -89,7 +89,7 @@
     <section class="card" id="cqiSection" style="display:none;">
       <div class="card__header">
         <div class="card__headerRow">
-          <div class="card__title">CQI Only</div>
+          <div class="card__title">Content Quality Index (CQI) Checker</div>
           <div style="display:flex;gap:8px;align-items:center;">
             <button class="btn btn--cta" type="button" id="cqiBackBtn" aria-label="Back to compare">← Back</button>
             <button class="infoBtn" type="button" id="howToCqiBtn" aria-label="How to use CQI" title="How to use CQI">i</button>
@@ -100,6 +100,11 @@
       <div class="field">
         <label class="field__label" for="cqiPastedContent">Pasted content</label>
         <textarea id="cqiPastedContent" name="cqiPastedContent" placeholder="Paste content to evaluate CQI..." rows="12"></textarea>
+        <div class="wordCountBar" id="wordCountBar">
+          <span id="wordCountNum">0 words</span>
+          <span id="wordCountSection" class="wordCountSection"></span>
+          <span id="wordCountWarning" class="wordCountWarning"></span>
+        </div>
       </div>
       <div class="actions">
         <button class="btn" type="button" id="runCqiBtn">Check CQI</button>
@@ -110,11 +115,11 @@
     <section class="results">
       <div id="status" class="status"></div>
       <div class="loaderOverlay" id="loaderOverlay" aria-hidden="true">
-        <div class="loaderCard" role="status" aria-live="polite" aria-label="Running comparison">
+        <div class="loaderCard" role="status" aria-live="polite" id="loaderCard">
           <div class="loaderRing" aria-hidden="true"></div>
           <div class="loaderText">
-            <div class="loaderTitle">Running comparison</div>
-            <div class="loaderSub">Fetching content and generating diff…</div>
+            <div class="loaderTitle" id="loaderTitle">Running comparison</div>
+            <div class="loaderSub" id="loaderSub">Fetching content and generating diff…</div>
           </div>
         </div>
       </div>
@@ -139,7 +144,6 @@
         </div>
         <button class="modal__close" type="button" id="howToClose" aria-label="Close">✕</button>
       </div>
-
       <div class="modal__body">
         <ol class="howto">
           <li>Enter the <b>Website URL</b> you want to validate.</li>
@@ -147,6 +151,93 @@
           <li>Paste the expected copy into <b>Pasted (Expected)</b>.</li>
           <li>Click <b>Run comparison</b> to see the diff and mismatch %.</li>
         </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- CQI info modal -->
+  <div class="modalBackdrop" id="howToCqiModal" aria-hidden="true">
+    <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="howToCqiTitle">
+      <div class="modal__head">
+        <div>
+          <div class="modal__title" id="howToCqiTitle">CQI — Content Quality Index Standards</div>
+          <div class="modal__sub">Unified QA Team — how CQI is scored by section type</div>
+        </div>
+        <button class="modal__close" type="button" id="howToCqiClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal__body">
+
+        <p class="modal__intro">CQI (0–100) measures content quality across three signals: <b>vocabulary variety</b>, <b>readability</b>, and <b>content depth</b>. The tool automatically detects your section type from word count and applies the industry-standard target below.</p>
+
+        <table class="infoTable">
+          <thead>
+            <tr>
+              <th>Words</th>
+              <th>Section type</th>
+              <th>Target CQI</th>
+              <th>Typical use in IT / enterprise websites</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="infoTable__row--hero">
+              <td>&lt; 50</td>
+              <td>Hero / Tagline</td>
+              <td>≥ 55</td>
+              <td>Homepage hero text, banner headlines, CTA copy. Length is not penalised — only vocabulary &amp; readability are scored.</td>
+            </tr>
+            <tr>
+              <td>50 – 99</td>
+              <td>Service Card / Feature</td>
+              <td>≥ 55</td>
+              <td>Service thumbnails, solution cards, feature highlights, short product descriptions.</td>
+            </tr>
+            <tr>
+              <td>100 – 199</td>
+              <td>Section Intro / About</td>
+              <td>≥ 60</td>
+              <td>Introductory paragraphs, about-us snippets, team section copy.</td>
+            </tr>
+            <tr>
+              <td>200 – 499</td>
+              <td>Page Section / Landing Copy</td>
+              <td>≥ 65</td>
+              <td>Core service/product page sections, value propositions, solution overviews.</td>
+            </tr>
+            <tr>
+              <td>500 – 999</td>
+              <td>Case Study / Blog Post</td>
+              <td>≥ 70</td>
+              <td>Client case studies, blog articles, thought leadership content.</td>
+            </tr>
+            <tr>
+              <td>1000+</td>
+              <td>Technical Article / Whitepaper</td>
+              <td>≥ 72</td>
+              <td>In-depth technical guides, whitepapers, long-form documentation, industry reports.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p class="modal__intro" style="margin-top:14px;"><b>Score bands:</b></p>
+        <table class="infoTable">
+          <thead><tr><th>Score</th><th>Status</th><th>What to do</th></tr></thead>
+          <tbody>
+            <tr><td>Target + 20 or above</td><td>🏆 Excellent</td><td>Content is well above the section target. Fine-tune tone and style.</td></tr>
+            <tr><td>Meets target</td><td>✅ Meets target</td><td>Content meets the industry standard for this section type.</td></tr>
+            <tr><td>1–10 below target</td><td>🔶 Almost there</td><td>Minor improvements to sentences or vocabulary will reach the target.</td></tr>
+            <tr><td>11–25 below target</td><td>⚠️ Needs improvement</td><td>Review suggestions — readability, vocabulary or depth needs attention.</td></tr>
+            <tr><td>25+ below target</td><td>❌ Poor</td><td>Significant rework needed across vocabulary, readability, and depth.</td></tr>
+          </tbody>
+        </table>
+
+        <p class="modal__intro" style="margin-top:14px;"><b>Quick tips to raise CQI:</b></p>
+        <ol class="howto">
+          <li>Break long sentences into 2–3 shorter ones to improve <b>readability</b>.</li>
+          <li>Replace repeated phrases with more specific or varied wording to improve <b>vocabulary</b>.</li>
+          <li>Add a short example, a step-by-step list, or a "why it matters" paragraph to improve <b>depth</b>.</li>
+          <li>Aim for at least <b>150 words</b> for a reliable CQI reading on section blocks.</li>
+        </ol>
+
       </div>
     </div>
   </div>

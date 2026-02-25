@@ -12,10 +12,15 @@ const cqiSection = document.getElementById("cqiSection");
 const runCqiBtn = document.getElementById("runCqiBtn");
 const cqiClearBtn = document.getElementById("cqiClearBtn");
 const cqiPasted = document.getElementById("cqiPastedContent");
-const howToBtn = document.getElementById("howToBtn");
-const howToModal = document.getElementById("howToModal");
-const howToClose = document.getElementById("howToClose");
+const howToBtn      = document.getElementById("howToBtn");
+const howToModal    = document.getElementById("howToModal");
+const howToClose    = document.getElementById("howToClose");
+const howToCqiBtn   = document.getElementById("howToCqiBtn");
+const howToCqiModal = document.getElementById("howToCqiModal");
+const howToCqiClose = document.getElementById("howToCqiClose");
 const loaderOverlay = document.getElementById("loaderOverlay");
+const loaderTitle   = document.getElementById("loaderTitle");
+const loaderSub     = document.getElementById("loaderSub");
 const langSelect = document.getElementById("langSelect");
 
 // Initialize language selector (persist in localStorage)
@@ -149,8 +154,9 @@ function buildCqiCalcHtml(cqi) {
 
   const rows = [
     ["Total words", totalWords],
+    ["Sentences detected", d.sentenceCount ?? "—"],
+    ["Avg. words per sentence", d.avgSentenceWords != null ? `${d.avgSentenceWords} words` : "—"],
     ["Sampled", d.sampled ? "Yes" : "No"],
-    ["Sample size used in CQI", d.sampleSize ?? d.totalWords ?? "—"],
     ["Unique words in sample", d.uniqueSample ?? d.uniqueWords ?? "—"],
     ["Vocabulary ratio (0–1)", d.vocabRatio ?? "—"],
     ["Readability score (0–1)", d.readabilityScore ?? d.readability ?? "—"],
@@ -166,7 +172,7 @@ function buildCqiCalcHtml(cqi) {
   const rd = d.readabilityDetails || {};
   const fk = rd.fleschKincaid ?? rd.fleschKincaidGrade ?? rd.fleschKincaidGradeLevel;
   if (fk !== undefined) {
-    tableHtml += `<tr><td>Flesch–Kincaid (library)</td><td>${escapeHtml(String(fk))}</td></tr>`;
+    tableHtml += `<tr><td>Flesch–Kincaid grade (reference only)</td><td>${escapeHtml(String(fk))} — not used in CQI calculation for IT content</td></tr>`;
   }
 
   tableHtml += `<tr><td>Vocabulary contribution</td><td>${escapeHtml(String(compV))} = ${escapeHtml(String(vocabRatioNum))} × ${escapeHtml(String(wV))}</td></tr>`;
@@ -181,7 +187,7 @@ function buildCqiCalcHtml(cqi) {
       <p><b>How to read this in simple terms:</b></p>
       <ul>
         <li><b>Vocabulary ratio</b> (0–1) tells us how often you reuse the same words. Closer to <b>1.0</b> means you are using more varied and specific words.</li>
-        <li><b>Readability score</b> (0–1) tells us how easy it is to read. Higher values usually mean shorter, clearer sentences that are not packed with too many ideas at once.</li>
+        <li><b>Readability score</b> (0–1) is based on average sentence length. IT content uses technical vocabulary by necessity, so syllable-count metrics like Flesch–Kincaid unfairly penalise it. Shorter, clearer sentences score higher. Aim for under 18 words per sentence.</li>
         <li><b>Length score</b> (0–1) tells us whether the content has enough substance. Very short texts with no explanation get a low score, fuller explanations get a higher one.</li>
         <li>The <b>weights</b> say how important each part is for CQI. For example, if vocabulary weight is 0.4, then vocabulary can contribute up to 40 of the 100 CQI points.</li>
         <li>We multiply each metric by its weight and add them up. This gives a number between 0 and 1. Then we turn that into a CQI between 0 and 100.</li>
@@ -283,10 +289,19 @@ function updateApiPill() {
 
 updateApiPill();
 
-function setLoading(isLoading) {
+function setLoading(isLoading, mode = "compare") {
   if (loaderOverlay) {
     loaderOverlay.classList.toggle("isOpen", isLoading);
     loaderOverlay.setAttribute("aria-hidden", String(!isLoading));
+  }
+  if (isLoading && loaderTitle && loaderSub) {
+    if (mode === "cqi") {
+      loaderTitle.textContent = "Analysing content quality…";
+      loaderSub.textContent   = "Calculating CQI score and suggestions…";
+    } else {
+      loaderTitle.textContent = "Running comparison";
+      loaderSub.textContent   = "Fetching content and generating diff…";
+    }
   }
 }
 
@@ -302,10 +317,24 @@ if (howToModal) {
   howToModal.addEventListener("click", (e) => {
     if (e.target === howToModal) setHowToOpen(false);
   });
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") setHowToOpen(false);
+}
+
+// CQI info modal
+function setHowToCqiOpen(isOpen) {
+  if (!howToCqiModal) return;
+  howToCqiModal.classList.toggle("isOpen", isOpen);
+  howToCqiModal.setAttribute("aria-hidden", String(!isOpen));
+}
+if (howToCqiBtn)   howToCqiBtn.addEventListener("click", () => setHowToCqiOpen(true));
+if (howToCqiClose) howToCqiClose.addEventListener("click", () => setHowToCqiOpen(false));
+if (howToCqiModal) {
+  howToCqiModal.addEventListener("click", (e) => {
+    if (e.target === howToCqiModal) setHowToCqiOpen(false);
   });
 }
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { setHowToOpen(false); setHowToCqiOpen(false); }
+});
 
 if (clearBtn) {
   clearBtn.addEventListener("click", () => {
@@ -330,7 +359,7 @@ if (toggleModeBtn && cqiSection) {
 
       cqiSection.style.display = "none";
       document.querySelector("section.card").style.display = ""; // the compare card
-      toggleModeBtn.textContent = "Check Content CQI Only";
+      toggleModeBtn.textContent = "Check CQI Score Only";
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       // switching FROM Compare view TO CQI-only view
@@ -368,9 +397,42 @@ if (cqiBackBtn) {
   });
 }
 
+// Live word count + section type + warning as user types
+const wordCountNum     = document.getElementById("wordCountNum");
+const wordCountSection = document.getElementById("wordCountSection");
+const wordCountWarning = document.getElementById("wordCountWarning");
+
+function getSectionInfo(wordCount) {
+  if (wordCount < 50)   return { type: "Hero / Tagline",              target: 55, color: "#f59e0b", warn: "Short-form copy — only vocabulary and readability are scored." };
+  if (wordCount < 100)  return { type: "Service Card / Feature",      target: 55, color: "#3b82f6", warn: "Aim for 100+ words for a more complete CQI evaluation." };
+  if (wordCount < 200)  return { type: "Section Intro / About",       target: 60, color: "#0ea5e9", warn: "" };
+  if (wordCount < 500)  return { type: "Page Section / Landing Copy", target: 65, color: "#10b981", warn: "" };
+  if (wordCount < 1000) return { type: "Case Study / Blog Post",      target: 70, color: "#8b5cf6", warn: "" };
+  return                       { type: "Technical Article / Whitepaper", target: 72, color: "#6366f1", warn: "" };
+}
+
+function updateWordCount() {
+  if (!cqiPasted || !wordCountNum) return;
+  const words = (cqiPasted.value.trim().match(/\S+/g) || []).length;
+  const info   = getSectionInfo(words);
+  wordCountNum.textContent = `${words} word${words !== 1 ? "s" : ""}`;
+  if (wordCountSection) {
+    wordCountSection.textContent = words > 0 ? `· ${info.type} · Target CQI ≥ ${info.target}` : "";
+    wordCountSection.style.color = info.color;
+  }
+  if (wordCountWarning) {
+    wordCountWarning.textContent = info.warn;
+  }
+}
+
+if (cqiPasted) {
+  cqiPasted.addEventListener("input", updateWordCount);
+}
+
 if (cqiClearBtn && cqiPasted) {
   cqiClearBtn.addEventListener("click", () => {
     cqiPasted.value = "";
+    updateWordCount();
     // clear outputs
     output.innerHTML = "";
     status.innerHTML = "";
@@ -387,9 +449,9 @@ if (runCqiBtn) {
     status.innerHTML = "";
     if (runMeta) runMeta.innerHTML = "";
     window.scrollTo({ top: 0, behavior: "smooth" });
-    setLoading(true);
+    setLoading(true, "cqi");
     if (!pasted.trim()) {
-      setLoading(false);
+      setLoading(false, "cqi");
       status.innerHTML = `<span class="fail">❌ Paste some content first</span>`;
       return;
     }
@@ -411,24 +473,52 @@ if (runCqiBtn) {
       }
 
       const data = await res.json();
-      setLoading(false);
+      setLoading(false, "cqi");
       const cqi = data.cqi;
       if (!cqi) {
         status.innerHTML = `<span class="fail">❌ No CQI returned</span>`;
         return;
       }
 
-      status.innerHTML = `<span class="pass">✅ CQI: ${cqi.score} — ${escapeHtml(cqi.summary)}</span>`;
-      // render CQI card + calculation toggle (reuse HTML fragment)
+      const sType    = cqi.sectionType || "";
+      const sTarget  = cqi.targetCQI  || 0;
+      const sNote    = cqi.sectionNote || "";
+      const cqiStatus = cqi.status || "";   // "exceeds" | "meets" | "near" | "needs_improvement" | "poor"
+
+      // Status → icon + CSS class
+      const statusMap = {
+        exceeds:          { icon: "🏆", cls: "sectionTarget--exceeds", label: `Excellent — well above target (CQI ${cqi.score}, target ≥ ${sTarget})` },
+        meets:            { icon: "✅", cls: "sectionTarget--pass",    label: `Meets the ${escapeHtml(sType)} content quality target (CQI ${cqi.score} ≥ ${sTarget})` },
+        near:             { icon: "🔶", cls: "sectionTarget--near",    label: `Almost there — just ${sTarget - cqi.score} point${sTarget - cqi.score !== 1 ? "s" : ""} below target (CQI ${cqi.score}, aim ≥ ${sTarget})` },
+        needs_improvement:{ icon: "⚠️", cls: "sectionTarget--fail",   label: `Needs improvement — ${sTarget - cqi.score} points below the ${escapeHtml(sType)} target (CQI ${cqi.score}, aim ≥ ${sTarget})` },
+        poor:             { icon: "❌", cls: "sectionTarget--poor",    label: `Significantly below target — content needs substantial rework (CQI ${cqi.score}, target ≥ ${sTarget})` },
+      };
+      const st = statusMap[cqiStatus] || statusMap["needs_improvement"];
+
+      const targetBadge = sTarget > 0
+        ? `<span class="sectionBadge" title="${escapeHtml(sNote)}">${escapeHtml(sType)} · Target ≥ ${sTarget}</span>`
+        : "";
+      const targetLine = sTarget > 0
+        ? `<div class="sectionTarget ${st.cls}">${st.icon} ${st.label}</div>`
+        : "";
+
+      // Top status bar
+      const statusCls = (cqiStatus === "exceeds" || cqiStatus === "meets") ? "pass"
+                      : (cqiStatus === "near") ? "warn"
+                      : "fail";
+      status.innerHTML = `<span class="${statusCls}">${st.icon} CQI: ${cqi.score} — ${escapeHtml(cqi.summary)}</span>`;
+      // render CQI card + calculation toggle
       output.innerHTML = `
         <div class="metricsRow">
-          <h3>Pasted Content CQI</h3>
+          <h3>Pasted Content CQI ${targetBadge}</h3>
+          ${targetLine}
           <div class="metricsGrid">
             <div class="metric cqiMetric">
               <div class="metric__label">CQI</div>
               <div class="metric__value">${cqi.score}</div>
               <div class="metric__sub">${escapeHtml(cqi.summary)}</div>
               ${cqi.reliable === false ? '<div class="metric__warn">Unreliable (short text)</div>' : ''}
+              ${sNote ? `<div class="metric__note">${escapeHtml(sNote)}</div>` : ""}
               <button class="calcToggle" id="showCalcBtn" type="button">Show calculation</button>
               <div class="calcDetails" id="calcDetails" style="display:none;"></div>
             </div>
@@ -486,7 +576,7 @@ if (runCqiBtn) {
       }
 
     } catch (err) {
-      setLoading(false);
+      setLoading(false, "cqi");
       console.error("CQI error:", err);
       status.innerHTML = `<span class="fail">❌ ${escapeHtml(err.message || err.toString())}</span>`;
     }
@@ -513,7 +603,22 @@ form.addEventListener("submit", async (e) => {
     new URL(url);
   } catch {
     setLoading(false);
-    status.innerHTML = `<span class="fail">❌ Invalid URL</span>`;
+    status.innerHTML = `<span class="fail">❌ Invalid URL. Please enter a valid website URL (e.g. https://example.com/page).</span>`;
+    return;
+  }
+
+  // Validate locator
+  if (!locator) {
+    setLoading(false);
+    const typeLabel = type === "xpath" ? "XPath" : type === "css" ? "CSS selector" : type === "id" ? "element ID" : "locator";
+    status.innerHTML = `<span class="fail">❌ ${typeLabel} is missing. Please enter a ${typeLabel} value in the Locator field before running the comparison.</span>`;
+    return;
+  }
+
+  // Validate pasted content
+  if (!pastedContent || !pastedContent.trim()) {
+    setLoading(false);
+    status.innerHTML = `<span class="fail">❌ Pasted (Expected) content is empty. Please paste the expected text before running the comparison.</span>`;
     return;
   }
 

@@ -41,6 +41,160 @@ function escapeRegExp(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function buildCqiSuggestionsHtml(cqi) {
+  const d = (cqi && cqi.details) || {};
+  const vocab = Number(d.vocabRatio ?? 0);
+  const read = Number(d.readabilityScore ?? d.readability ?? 0);
+  const length = Number(d.lengthScore ?? 0);
+  const w = d.weights || {};
+  const wV = Number(w.vocabWeight) || 0;
+  const wR = Number(w.readWeight) || 0;
+  const wL = Number(w.lengthWeight) || 0;
+
+  const target = 0.6; // heuristic target (0–1 scale) for a “healthy” metric
+  const suggestions = [];
+
+  // Approximate potential CQI gain if this metric is lifted to target
+  const potentialVocabGain = vocab < target ? Math.max(0, target - vocab) * wV * 100 : 0;
+  const potentialReadGain = read < target ? Math.max(0, target - read) * wR * 100 : 0;
+  const potentialLengthGain = length < target ? Math.max(0, target - length) * wL * 100 : 0;
+
+  // Short, metric‑aware suggestions
+  if (read < target && potentialReadGain > 0.5) {
+    suggestions.push(
+      `✔ <b>Sentences (readability)</b>: now <b>${read.toFixed(2)}</b>, aim ≈ <b>${target.toFixed(
+        2
+      )}</b> (≈ +${Math.round(
+        potentialReadGain
+      )} CQI). Break long sentences into 2–3 shorter ones and cut filler words such as very or really.`
+    );
+  }
+
+  if (length < target && potentialLengthGain > 0.5) {
+    suggestions.push(
+      `✔ <b>Depth & structure</b>: now <b>${length.toFixed(2)}</b>, aim ≈ <b>${target.toFixed(
+        2
+      )}</b> (≈ +${Math.round(
+        potentialLengthGain
+      )} CQI). Add 1–2 short paragraphs that explain why this topic is important, include a simple example, or outline a short step‑by‑step list.`
+    );
+  }
+
+  if (vocab < target && potentialVocabGain > 0.5) {
+    suggestions.push(
+      `✔ <b>Vocabulary (repetition)</b>: now <b>${vocab.toFixed(2)}</b>, aim ≈ <b>${target.toFixed(
+        2
+      )}</b> (≈ +${Math.round(
+        potentialVocabGain
+      )} CQI). Replace repeated phrases (for example generic praise like great product) with more specific wording that explains what is special.`
+    );
+  }
+
+  let metricsLine = "";
+  if (d.totalWords != null) {
+    metricsLine = `Current metrics (0–1 scale, higher is better): vocab ${vocab.toFixed(
+      2
+    )}, readability ${read.toFixed(2)}, length/depth ${length.toFixed(2)}.`;
+  }
+
+  if (!suggestions.length) {
+    suggestions.push(
+      "✅ Your content already scores well on CQI. Focus on small tweaks to tone, style, and clarity."
+    );
+  }
+
+  // Overall gain line, e.g. “CQI: 46 → ~72 (estimated gain: +26)”
+  let gainLine = "";
+  const baseScore =
+    cqi && typeof cqi.score === "number"
+      ? Number(cqi.score)
+      : Math.round(Math.max(0, Math.min(1, (vocab * wV) + (read * wR) + (length * wL))) * 100);
+  const totalPotentialGain = Math.round(potentialVocabGain + potentialReadGain + potentialLengthGain);
+  if (totalPotentialGain > 1) {
+    const targetScore = Math.max(0, Math.min(100, baseScore + totalPotentialGain));
+    const gain = targetScore - baseScore;
+    gainLine = `CQI: <b>${baseScore}</b> → ~<b>${targetScore}</b> (estimated gain: <b>+${gain}</b> after applying the changes above).`;
+  }
+
+  let html = '<div class="cqiSuggestions"><h4>Suggestions to improve CQI</h4><ul>';
+  suggestions.forEach(item => {
+    html += `<li>${item}</li>`;
+  });
+  html += "</ul>";
+  if (metricsLine) {
+    html += `<div class="cqiSuggestions__metrics">${metricsLine}</div>`;
+  }
+  if (gainLine) {
+    html += `<div class="cqiSuggestions__gain">${gainLine}</div>`;
+  }
+  html += "</div>";
+  return html;
+}
+
+function buildCqiCalcHtml(cqi) {
+  const d = (cqi && cqi.details) || {};
+  const totalWords = d.totalWords ?? "—";
+  const vocabRatioNum = Number(d.vocabRatio) || 0;
+  const readNum = Number(d.readabilityScore ?? d.readability) || 0;
+  const lengthNum = Number(d.lengthScore) || 0;
+  const w = d.weights || {};
+  const wV = Number(w.vocabWeight) || 0;
+  const wR = Number(w.readWeight) || 0;
+  const wL = Number(w.lengthWeight) || 0;
+  const compV = +(vocabRatioNum * wV).toFixed(4);
+  const compR = +(readNum * wR).toFixed(4);
+  const compL = +(lengthNum * wL).toFixed(4);
+  const combinedCalc = +(compV + compR + compL).toFixed(4);
+  const cqiScore = (typeof cqi.score === "number") ? cqi.score : Math.round(combinedCalc * 100);
+
+  const rows = [
+    ["Total words", totalWords],
+    ["Sampled", d.sampled ? "Yes" : "No"],
+    ["Sample size used in CQI", d.sampleSize ?? d.totalWords ?? "—"],
+    ["Unique words in sample", d.uniqueSample ?? d.uniqueWords ?? "—"],
+    ["Vocabulary ratio (0–1)", d.vocabRatio ?? "—"],
+    ["Readability score (0–1)", d.readabilityScore ?? d.readability ?? "—"],
+    ["Length score (0–1)", d.lengthScore ?? "—"],
+    ["Weights (vocab / readability / length)", d.weights ? `${d.weights.vocabWeight} / ${d.weights.readWeight} / ${d.weights.lengthWeight}` : "—"]
+  ];
+
+  let tableHtml = '<table class="calcTable"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    tableHtml += `<tr><td>${escapeHtml(String(r[0]))}</td><td>${escapeHtml(String(r[1]))}</td></tr>`;
+  });
+
+  const rd = d.readabilityDetails || {};
+  const fk = rd.fleschKincaid ?? rd.fleschKincaidGrade ?? rd.fleschKincaidGradeLevel;
+  if (fk !== undefined) {
+    tableHtml += `<tr><td>Flesch–Kincaid (library)</td><td>${escapeHtml(String(fk))}</td></tr>`;
+  }
+
+  tableHtml += `<tr><td>Vocabulary contribution</td><td>${escapeHtml(String(compV))} = ${escapeHtml(String(vocabRatioNum))} × ${escapeHtml(String(wV))}</td></tr>`;
+  tableHtml += `<tr><td>Readability contribution</td><td>${escapeHtml(String(compR))} = ${escapeHtml(String(readNum))} × ${escapeHtml(String(wR))}</td></tr>`;
+  tableHtml += `<tr><td>Length contribution</td><td>${escapeHtml(String(compL))} = ${escapeHtml(String(lengthNum))} × ${escapeHtml(String(wL))}</td></tr>`;
+  tableHtml += `<tr><td><b>Combined (sum)</b></td><td><b>${escapeHtml(String(combinedCalc))}</b></td></tr>`;
+  tableHtml += `<tr><td><b>CQI (rounded)</b></td><td><b>${escapeHtml(String(cqiScore))}</b> (round(${escapeHtml(String(combinedCalc))} × 100))</td></tr>`;
+  tableHtml += '</tbody></table>';
+
+  const explainHtml = `
+    <div class="calcExplain">
+      <p><b>How to read this in simple terms:</b></p>
+      <ul>
+        <li><b>Vocabulary ratio</b> (0–1) tells us how often you reuse the same words. Closer to <b>1.0</b> means you are using more varied and specific words.</li>
+        <li><b>Readability score</b> (0–1) tells us how easy it is to read. Higher values usually mean shorter, clearer sentences that are not packed with too many ideas at once.</li>
+        <li><b>Length score</b> (0–1) tells us whether the content has enough substance. Very short texts with no explanation get a low score, fuller explanations get a higher one.</li>
+        <li>The <b>weights</b> say how important each part is for CQI. For example, if vocabulary weight is 0.4, then vocabulary can contribute up to 40 of the 100 CQI points.</li>
+        <li>We multiply each metric by its weight and add them up. This gives a number between 0 and 1. Then we turn that into a CQI between 0 and 100.</li>
+        <li>For example, if vocabulary contribution is 0.18, readability 0.22 and length 0.15, the sum is 0.55. When we multiply 0.55 × 100 we get a CQI of about 55.</li>
+      </ul>
+    </div>
+  `;
+
+  tableHtml += `<div class="calcFormula">CQI = round(clamp(vocabRatio×${wV} + readability×${wR} + length×${wL}, 0,1) × 100) → <b>${escapeHtml(String(cqiScore))}</b></div>`;
+  tableHtml += explainHtml;
+  return tableHtml;
+}
+
 function highlightMisspellingsInHtml(html, words) {
   if (!words || words.length === 0) return html;
   const wrapper = document.createElement("div");
@@ -168,15 +322,28 @@ if (toggleModeBtn && cqiSection) {
   toggleModeBtn.addEventListener("click", () => {
     const isCqiVisible = cqiSection.style.display !== "none";
     if (isCqiVisible) {
-      // show compare form
+      // switching FROM CQI view back TO Compare view
+      // Clear any CQI / analysis output so Compare page starts fresh
+      output.innerHTML = "";
+      status.innerHTML = "";
+      if (runMeta) runMeta.innerHTML = "";
+
       cqiSection.style.display = "none";
       document.querySelector("section.card").style.display = ""; // the compare card
-      toggleModeBtn.textContent = "CQI only";
+      toggleModeBtn.textContent = "Check Content CQI Only";
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
-      // show CQI only
+      // switching FROM Compare view TO CQI-only view
+      // Clear Compare output so CQI page shows only CQI results
+      output.innerHTML = "";
+      status.innerHTML = "";
+      if (runMeta) runMeta.innerHTML = "";
+      if (cqiPasted) cqiPasted.value = "";
+
       cqiSection.style.display = "";
       document.querySelector("section.card").style.display = "none";
       toggleModeBtn.textContent = "Compare";
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });
 }
@@ -185,12 +352,17 @@ if (toggleModeBtn && cqiSection) {
 const cqiBackBtn = document.getElementById("cqiBackBtn");
 if (cqiBackBtn) {
   cqiBackBtn.addEventListener("click", () => {
+    // Going back to Compare view: clear CQI/analysis output so Compare page is fresh
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+
     // show compare form
     cqiSection.style.display = "none";
     const compareCard = document.querySelector("section.card");
     if (compareCard) compareCard.style.display = "";
     // update toggle button text
-    if (toggleModeBtn) toggleModeBtn.textContent = "CQI only";
+    if (toggleModeBtn) toggleModeBtn.textContent = "Check Content CQI Only";
     // scroll to top of page for UX
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
@@ -210,8 +382,11 @@ if (cqiClearBtn && cqiPasted) {
 if (runCqiBtn) {
   runCqiBtn.addEventListener("click", async () => {
     const pasted = cqiPasted.value || "";
+    // Always clear previous results so each run shows fresh data only
     output.innerHTML = "";
     status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    window.scrollTo({ top: 0, behavior: "smooth" });
     setLoading(true);
     if (!pasted.trim()) {
       setLoading(false);
@@ -258,6 +433,7 @@ if (runCqiBtn) {
               <div class="calcDetails" id="calcDetails" style="display:none;"></div>
             </div>
           </div>
+          <div id="cqiSuggestions" class="cqiSuggestions"></div>
         </div>
       `;
       // show pasted content preview with spelling highlights (if available)
@@ -281,57 +457,22 @@ if (runCqiBtn) {
       const metricsContainer = output.querySelector(".metricsRow");
       if (metricsContainer) metricsContainer.appendChild(previewNode);
 
+      // suggestions for improving CQI
+      const suggNode = document.getElementById("cqiSuggestions");
+      if (suggNode) {
+        suggNode.innerHTML = buildCqiSuggestionsHtml(cqi);
+      }
+
       // attach calc toggle (same logic as compare flow)
       const showCalcBtn = document.getElementById("showCalcBtn");
-      if (showCalcBtn) {
+      if (showCalcBtn && cqi) {
         showCalcBtn.addEventListener("click", () => {
           const details = document.getElementById("calcDetails");
           if (!details) return;
           const isHidden = details.style.display === "none";
           if (isHidden) {
             try {
-              const d = cqi.details || {};
-              const rows = [
-                ["Sampled", d.sampled ? "Yes" : "No"],
-                ["Sample size", d.sampleSize ?? d.totalWords ?? "—"],
-                ["Unique words (sample)", d.uniqueSample ?? d.uniqueWords ?? "—"],
-                ["Vocabulary ratio", d.vocabRatio ?? "—"],
-                ["Readability score", d.readabilityScore ?? d.readability ?? "—"],
-                ["Length score", d.lengthScore ?? "—"],
-                ["Weights (vocab / read / length)", d.weights ? `${d.weights.vocabWeight} / ${d.weights.readWeight} / ${d.weights.lengthWeight}` : "—"]
-              ];
-
-              let tableHtml = '<table class="calcTable"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>';
-              rows.forEach(r => {
-                tableHtml += `<tr><td>${escapeHtml(String(r[0]))}</td><td>${escapeHtml(String(r[1]))}</td></tr>`;
-              });
-              const rd = d.readabilityDetails || {};
-              const fk = rd.fleschKincaid ?? rd.fleschKincaidGrade ?? rd.fleschKincaidGradeLevel;
-              if (fk !== undefined) {
-                tableHtml += `<tr><td>Flesch–Kincaid (library)</td><td>${escapeHtml(String(fk))}</td></tr>`;
-              }
-
-              const vocabRatioNum = Number(d.vocabRatio) || 0;
-              const readNum = Number(d.readabilityScore ?? d.readability) || 0;
-              const lengthNum = Number(d.lengthScore) || 0;
-              const w = d.weights || {};
-              const wV = Number(w.vocabWeight) || 0;
-              const wR = Number(w.readWeight) || 0;
-              const wL = Number(w.lengthWeight) || 0;
-              const compV = +(vocabRatioNum * wV).toFixed(4);
-              const compR = +(readNum * wR).toFixed(4);
-              const compL = +(lengthNum * wL).toFixed(4);
-              const combinedCalc = +(compV + compR + compL).toFixed(4);
-              const cqiScore = (typeof cqi.score === "number") ? cqi.score : Math.round(combinedCalc * 100);
-
-              tableHtml += `<tr><td>Vocabulary contribution</td><td>${escapeHtml(String(compV))} = ${escapeHtml(String(vocabRatioNum))} × ${escapeHtml(String(wV))}</td></tr>`;
-              tableHtml += `<tr><td>Readability contribution</td><td>${escapeHtml(String(compR))} = ${escapeHtml(String(readNum))} × ${escapeHtml(String(wR))}</td></tr>`;
-              tableHtml += `<tr><td>Length contribution</td><td>${escapeHtml(String(compL))} = ${escapeHtml(String(lengthNum))} × ${escapeHtml(String(wL))}</td></tr>`;
-              tableHtml += `<tr><td><b>Combined (sum)</b></td><td><b>${escapeHtml(String(combinedCalc))}</b></td></tr>`;
-              tableHtml += `<tr><td><b>CQI (rounded)</b></td><td><b>${escapeHtml(String(cqiScore))}</b> (round(${escapeHtml(String(combinedCalc))} × 100))</td></tr>`;
-              tableHtml += '</tbody></table>';
-              tableHtml += `<div class="calcFormula">CQI = round(clamp(vocabRatio×${wV} + readability×${wR} + length×${wL}, 0,1) × 100) → <b>${escapeHtml(String(cqiScore))}</b></div>`;
-              details.innerHTML = tableHtml;
+              details.innerHTML = buildCqiCalcHtml(cqi);
             } catch (e) {
               details.innerHTML = `<pre>${escapeHtml(JSON.stringify(cqi.details, null, 2))}</pre>`;
             }
@@ -355,9 +496,11 @@ if (runCqiBtn) {
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
+  // Always clear previous results so each run shows fresh data only
   output.innerHTML = "";
   status.innerHTML = "";
   if (runMeta) runMeta.innerHTML = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
   setLoading(true);
 
   const formData = new FormData(form);
@@ -474,67 +617,20 @@ form.addEventListener("submit", async (e) => {
         <div class="metricsGrid">
           ${cqiHtml}
         </div>
+        <div id="compareCqiSuggestions" class="cqiSuggestions"></div>
       </div>
     `;
 
     // Attach toggle handler for showing calculation details
     const showCalcBtn = document.getElementById("showCalcBtn");
-    if (showCalcBtn) {
+    if (showCalcBtn && cqi) {
       showCalcBtn.addEventListener("click", () => {
         const details = document.getElementById("calcDetails");
         if (!details) return;
         const isHidden = details.style.display === "none";
         if (isHidden) {
-          // Populate human-friendly table
           try {
-            const d = cqi.details || {};
-            const rows = [
-              ["Total words", d.totalWords ?? "—"],
-              ["Sampled", d.sampled ? "Yes" : "No"],
-              ["Sample size", d.sampleSize ?? d.totalWords ?? "—"],
-              ["Unique words (sample)", d.uniqueSample ?? d.uniqueWords ?? "—"],
-              ["Vocabulary ratio", d.vocabRatio ?? "—"],
-              ["Readability score", d.readabilityScore ?? d.readability ?? "—"],
-              ["Length score", d.lengthScore ?? "—"],
-              ["Weights (vocab / read / length)", d.weights ? `${d.weights.vocabWeight} / ${d.weights.readWeight} / ${d.weights.lengthWeight}` : "—"]
-            ];
-
-            let tableHtml = '<table class="calcTable"><thead><tr><th>Metric</th><th>Value</th></tr></thead><tbody>';
-            rows.forEach(r => {
-              tableHtml += `<tr><td>${escapeHtml(String(r[0]))}</td><td>${escapeHtml(String(r[1]))}</td></tr>`;
-            });
-
-            // Readability details (flesch-kincaid if present)
-            const rd = d.readabilityDetails || {};
-            const fk = rd.fleschKincaid ?? rd.fleschKincaidGrade ?? rd.fleschKincaidGradeLevel;
-            if (fk !== undefined) {
-              tableHtml += `<tr><td>Flesch–Kincaid (library)</td><td>${escapeHtml(String(fk))}</td></tr>`;
-            }
-
-            // Show how the weighted components produce the final CQI
-            const vocabRatioNum = Number(d.vocabRatio) || 0;
-            const readNum = Number(d.readabilityScore ?? d.readability) || 0;
-            const lengthNum = Number(d.lengthScore) || 0;
-            const w = d.weights || {};
-            const wV = Number(w.vocabWeight) || 0;
-            const wR = Number(w.readWeight) || 0;
-            const wL = Number(w.lengthWeight) || 0;
-            const compV = +(vocabRatioNum * wV).toFixed(4);
-            const compR = +(readNum * wR).toFixed(4);
-            const compL = +(lengthNum * wL).toFixed(4);
-            const combinedCalc = +(compV + compR + compL).toFixed(4);
-            const cqiScore = (typeof cqi.score === "number") ? cqi.score : Math.round(combinedCalc * 100);
-
-            tableHtml += `<tr><td>Vocabulary contribution</td><td>${escapeHtml(String(compV))} = ${escapeHtml(String(vocabRatioNum))} × ${escapeHtml(String(wV))}</td></tr>`;
-            tableHtml += `<tr><td>Readability contribution</td><td>${escapeHtml(String(compR))} = ${escapeHtml(String(readNum))} × ${escapeHtml(String(wR))}</td></tr>`;
-            tableHtml += `<tr><td>Length contribution</td><td>${escapeHtml(String(compL))} = ${escapeHtml(String(lengthNum))} × ${escapeHtml(String(wL))}</td></tr>`;
-            tableHtml += `<tr><td><b>Combined (sum)</b></td><td><b>${escapeHtml(String(combinedCalc))}</b></td></tr>`;
-            tableHtml += `<tr><td><b>CQI (rounded)</b></td><td><b>${escapeHtml(String(cqiScore))}</b> (round(${escapeHtml(String(combinedCalc))} × 100))</td></tr>`;
-
-            tableHtml += '</tbody></table>';
-            // Add a small human-readable formula block
-            tableHtml += `<div class="calcFormula">CQI = round(clamp(vocabRatio×${wV} + readability×${wR} + length×${wL}, 0,1) × 100) → <b>${escapeHtml(String(cqiScore))}</b></div>`;
-            details.innerHTML = tableHtml;
+            details.innerHTML = buildCqiCalcHtml(cqi);
           } catch (e) {
             details.innerHTML = `<pre>${escapeHtml(JSON.stringify(cqi.details, null, 2))}</pre>`;
           }
@@ -545,6 +641,12 @@ form.addEventListener("submit", async (e) => {
           showCalcBtn.textContent = "Show calculation";
         }
       });
+    }
+
+    // Attach suggestions for improving CQI in compare mode
+    const compareSuggNode = document.getElementById("compareCqiSuggestions");
+    if (compareSuggNode && cqi) {
+      compareSuggNode.innerHTML = buildCqiSuggestionsHtml(cqi);
     }
 
   } catch (err) {

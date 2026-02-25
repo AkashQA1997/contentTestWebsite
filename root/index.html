@@ -21,6 +21,15 @@
           <span class="dot" id="apiDot"></span>
           <span id="apiLabel">Backend: not set</span>
         </div>
+        <div style="margin-left:12px;">
+          <select id="langSelect" aria-label="Spelling language" title="Spelling language">
+            <option value="en" selected>English</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+            <option value="pt">Português</option>
+          </select>
+        </div>
       </div>
     </div>
   </header>
@@ -34,7 +43,10 @@
       <div class="card__header">
         <div class="card__headerRow">
           <div class="card__title">Test inputs</div>
-          <button class="infoBtn" type="button" id="howToBtn" aria-label="How to use" title="How to use">i</button>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn--cta" type="button" id="toggleModeBtn" aria-label="Switch mode">CQI only</button>
+            <button class="infoBtn" type="button" id="howToBtn" aria-label="How to use" title="How to use">i</button>
+          </div>
         </div>
       </div>
 
@@ -72,6 +84,27 @@
           <button class="btn btn--ghost" type="button" id="clearBtn">Clear</button>
         </div>
       </form>
+    </section>
+
+    <section class="card" id="cqiSection" style="display:none;">
+      <div class="card__header">
+        <div class="card__headerRow">
+          <div class="card__title">CQI Only</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn--cta" type="button" id="cqiBackBtn" aria-label="Back to compare">← Back</button>
+            <button class="infoBtn" type="button" id="howToCqiBtn" aria-label="How to use CQI" title="How to use CQI">i</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="cqiPastedContent">Pasted content</label>
+        <textarea id="cqiPastedContent" name="cqiPastedContent" placeholder="Paste content to evaluate CQI..." rows="12"></textarea>
+      </div>
+      <div class="actions">
+        <button class="btn" type="button" id="runCqiBtn">Check CQI</button>
+        <button class="btn btn--ghost" type="button" id="cqiClearBtn">Clear</button>
+      </div>
     </section>
 
     <section class="results">

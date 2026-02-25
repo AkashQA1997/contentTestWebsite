@@ -5,10 +5,70 @@ import { chromium } from "playwright";
 import { diffChars } from "diff";   // ⬅ switched to char diff
 import path from "path";
 import { fileURLToPath } from "url";
+import readabilityScores from "readability-scores";
 import natural from "natural";
+import nspell from "nspell";
+
+// Spelling engine cache for multiple languages
+const spellCache = {}; // lang -> { spell, ready }
+
+// Supported languages and their dictionary package names
+const DICT_MAP = {
+  en: "dictionary-en",
+  es: "dictionary-es",
+  fr: "dictionary-fr",
+  de: "dictionary-de",
+  pt: "dictionary-pt"
+};
+
+async function loadDictionaryFor(lang = "en") {
+  if (spellCache[lang]) return spellCache[lang];
+  const pkgName = DICT_MAP[lang] || DICT_MAP["en"];
+  const entry = { spell: null, ready: false };
+  spellCache[lang] = entry;
+  try {
+    // dynamic import
+    const dictModule = await import(pkgName);
+    const loader = dictModule && (dictModule.default || dictModule);
+    let dict;
+    if (typeof loader === "function") {
+      // callback style
+      dict = await new Promise((resolve, reject) => {
+        try {
+          loader((err, d) => {
+            if (err) return reject(err);
+            resolve(d);
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    } else if (loader && typeof loader.then === "function") {
+      dict = await loader();
+    } else if (loader && (loader.aff || loader.dic)) {
+      dict = loader;
+    } else {
+      throw new Error("Unsupported dictionary export shape");
+    }
+
+    entry.spell = nspell(dict);
+    entry.ready = true;
+    console.log(`✅ Spelling dictionary loaded for ${lang}`);
+  } catch (err) {
+    entry.ready = false;
+    console.error(`Spelling dictionary load error for ${lang}:`, err.message || err);
+  }
+  return entry;
+}
 
 const app = express();
 const PORT = 3000;
+// Configurable parameters (via env)
+const SAMPLE_WORD_LIMIT = Number(process.env.SAMPLE_WORD_LIMIT) || 5000;
+const LENGTH_SCALE = Number(process.env.LENGTH_SCALE) || 1000; // larger -> depth matters more
+const BROKEN_LINK_MODE = process.env.BROKEN_LINK_MODE || "fast"; // "off" | "fast" | "sync"
+const BROKEN_LINK_MAX_URLS = Number(process.env.BROKEN_LINK_MAX_URLS) || 5;
+const BROKEN_LINK_TIMEOUT_MS = Number(process.env.BROKEN_LINK_TIMEOUT_MS) || (BROKEN_LINK_MODE === "fast" ? 1000 : 3000);
 
 // CORS configuration - allow all origins for GitHub Pages
 app.use(cors({
@@ -107,191 +167,304 @@ function buildHtmlDiff(expected, actual) {
 }
 
 // ----------------------------
-// UTIL: Meaning Drift Analysis for Pasted Content Only
+// UTIL: Content Quality Index (CQI) for pasted content
 // ----------------------------
-function calculateMeaningDriftForPastedContent(pastedContent) {
+function calculateCQI(pastedContent) {
   if (!pastedContent || pastedContent.trim().length === 0) {
-    return { score: 0, summary: "No pasted content to analyze" };
+    return { score: 0, summary: "No pasted content" };
   }
 
-  // Tokenize and normalize words
-  const tokenizer = new natural.WordTokenizer();
-  const stopwords = natural.stopwords || [];
-  
-  const tokens = tokenizer.tokenize(pastedContent.toLowerCase())
-    .filter(word => word && word.length > 2 && !stopwords.includes(word))
-    .map(word => natural.PorterStemmer.stem(word));
+  const textFull = pastedContent.replace(/\s+/g, " ").trim();
+  const wordsFull = textFull.split(/\s+/).filter(Boolean);
+  const totalWords = wordsFull.length;
 
-  if (tokens.length === 0) {
-    return { score: 0, summary: "Content contains only stop words" };
+  // For very large content, analyze a sample to keep CPU/memory bounded
+  const SAMPLE_WORD_LIMIT = 5000;
+  const useSampling = totalWords > SAMPLE_WORD_LIMIT;
+  const words = useSampling ? wordsFull.slice(0, SAMPLE_WORD_LIMIT) : wordsFull;
+  const textSample = words.join(" ");
+  const sampleSize = words.length;
+
+  // --- Vocabulary: Bayesian shrinkage to avoid inflated TTR on tiny texts
+  const lowerWords = words.map(w => w.toLowerCase().replace(/[^a-z0-9']/g, ""));
+  const uniqueSample = new Set(lowerWords.filter(Boolean)).size;
+  const prior = 0.5; // prior TTR for smoothing
+  const k = 20; // pseudo-count (higher = stronger shrinkage)
+  const vocabRatio = (uniqueSample + k * prior) / (Math.max(1, sampleSize) + k); // 0..1
+
+  // --- Readability: robust mapping using readability-scores (logistic mapping)
+  let readability = 0;
+  let readabilityDetails = null;
+  try {
+    const rd = readabilityScores(textSample);
+    readabilityDetails = rd || null;
+    const fk = (rd && typeof rd.fleschKincaid === "number") ? rd.fleschKincaid : null;
+    if (fk !== null) {
+      // Logistic mapping: mu=12, sigma=4 (tuneable)
+      const mu = 12;
+      const sigma = 4;
+      readability = 1 / (1 + Math.exp((fk - mu) / sigma));
+    } else {
+      // Fallback: average sentence length
+      const sentences = textSample.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+      const avgSentenceWords = sentences.length > 0 ? words.filter(Boolean).length / sentences.length : sampleSize;
+      readability = 1 - Math.min(avgSentenceWords / 30, 1);
+    }
+  } catch (err) {
+    const sentences = textSample.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+    const avgSentenceWords = sentences.length > 0 ? words.filter(Boolean).length / sentences.length : sampleSize;
+    readability = 1 - Math.min(avgSentenceWords / 30, 1);
   }
 
-  // Calculate word frequency and diversity
-  const wordFreq = {};
-  tokens.forEach(word => {
-    wordFreq[word] = (wordFreq[word] || 0) + 1;
-  });
+  // --- Length: smooth saturating function (diminishing returns)
+  const lengthScore = 1 - Math.exp(-totalWords / LENGTH_SCALE);
 
-  const uniqueWords = Object.keys(wordFreq).length;
-  const totalWords = tokens.length;
-  const wordDiversity = uniqueWords / totalWords; // Higher = more diverse vocabulary
+  // --- Confidence: downweight vocab/length when text is small
+  const confidence = Math.min(1, totalWords / 100); // <100 words -> partial confidence
+  const baseWeights = { vocab: 0.4, read: 0.3, length: 0.3 };
+  const vocabWeight = baseWeights.vocab * confidence;
+  const lengthWeight = baseWeights.length * confidence;
+  const readWeight = 1 - (vocabWeight + lengthWeight); // readability absorbs remaining weight
 
-  // Calculate semantic coherence metrics
-  // Lower diversity might indicate repetition or lack of semantic richness
-  // Higher diversity might indicate good semantic coverage
-  
-  // Calculate average word frequency (lower = more diverse, higher = more repetitive)
-  const avgFreq = totalWords / uniqueWords;
-  
-  // Calculate drift score based on content quality metrics
-  // Low diversity (repetitive) = higher drift (less meaningful variation)
-  // High diversity (rich vocabulary) = lower drift (good semantic coverage)
-  // We'll invert this: high diversity = low drift, low diversity = high drift
-  const diversityScore = wordDiversity; // 0-1, higher is better
-  const driftFromIdeal = 1 - diversityScore; // How far from ideal diversity
-  
-  // Also consider if content is too short (less meaningful)
-  const lengthScore = Math.min(1, totalWords / 50); // Normalize to 0-1, 50 words = full score
-  const lengthDrift = 1 - lengthScore; // Shorter content = higher drift
-  
-  // Combined drift score (weighted: 70% diversity, 30% length)
-  const combinedDrift = (driftFromIdeal * 0.7) + (lengthDrift * 0.3);
-  const driftScore = Math.max(0, Math.min(100, Math.round(combinedDrift * 100)));
+  const combined = (vocabRatio * vocabWeight) + (readability * readWeight) + (lengthScore * lengthWeight);
+  const score = Math.round(Math.max(0, Math.min(1, combined)) * 100);
 
-  // Generate summary
   let summary = "";
-  if (driftScore < 20) {
-    summary = "High semantic quality - rich vocabulary and good content structure";
-  } else if (driftScore < 40) {
-    summary = "Good semantic quality - adequate vocabulary diversity";
-  } else if (driftScore < 60) {
-    summary = "Moderate semantic quality - some repetition or limited vocabulary";
-  } else if (driftScore < 80) {
-    summary = "Low semantic quality - significant repetition or poor structure";
-  } else {
-    summary = "Very low semantic quality - highly repetitive or minimal meaningful content";
-  }
+  if (score >= 80) summary = "Excellent content quality";
+  else if (score >= 60) summary = "Good content quality";
+  else if (score >= 40) summary = "Fair content quality";
+  else summary = "Poor content quality";
 
-  // Add metrics to summary
-  summary += ` (${uniqueWords} unique words, ${totalWords} total words)`;
+  const reliable = totalWords >= 30;
 
   return {
-    score: driftScore,
-    summary: summary
+    score,
+    summary,
+    reliable,
+    details: {
+      totalWords,
+      sampleSize,
+      sampled: useSampling,
+      uniqueSample,
+      vocabRatio: Number(vocabRatio.toFixed(3)),
+      readabilityScore: Number(readability.toFixed(3)),
+      lengthScore: Number(lengthScore.toFixed(3)),
+      weights: {
+        vocabWeight: Number(vocabWeight.toFixed(3)),
+        readWeight: Number(readWeight.toFixed(3)),
+        lengthWeight: Number(lengthWeight.toFixed(3))
+      },
+      readabilityDetails
+    }
   };
 }
 
 // ----------------------------
-// UTIL: Meaning Drift Analysis (Legacy - comparing two texts)
+// UTIL: Spelling analysis (uses nspell)
 // ----------------------------
-function calculateMeaningDrift(expected, actual) {
-  if (!expected || !actual) {
-    return { score: 0, summary: "Insufficient text for analysis" };
+async function analyzeSpelling(pastedContent, lang = "en") {
+  const entry = await loadDictionaryFor(lang);
+  if (!entry || !entry.ready) {
+    return { available: false, message: `Dictionary for ${lang} not loaded` };
+  }
+  const spell = entry.spell;
+
+  const textFull = pastedContent.replace(/\s+/g, " ").trim();
+  const wordsFull = textFull.split(/\s+/).filter(Boolean);
+  const totalWords = wordsFull.length;
+  const useSampling = totalWords > SAMPLE_WORD_LIMIT;
+  const words = useSampling ? wordsFull.slice(0, SAMPLE_WORD_LIMIT) : wordsFull;
+
+  const freq = {};
+  words.forEach(w => {
+    const cleaned = w.toLowerCase().replace(/[^a-z\u00C0-\u024F']/g, ""); // allow accented letters
+    if (!cleaned || cleaned.length < 2) return;
+    freq[cleaned] = (freq[cleaned] || 0) + 1;
+  });
+
+  const uniqueWords = Object.keys(freq).length;
+  const misspelled = [];
+  let missCount = 0;
+  for (const [word, count] of Object.entries(freq)) {
+    try {
+      if (!spell.correct(word)) {
+        misspelled.push({ word, count, suggestions: (spell.suggest(word) || []).slice(0, 3) });
+        missCount += count;
+      }
+    } catch (e) {
+      // skip problematic words
+    }
   }
 
-  // Tokenize and normalize words
-  const tokenizer = new natural.WordTokenizer();
-  // Common stop words - natural library provides this
+  misspelled.sort((a, b) => b.count - a.count);
+  const top = misspelled.slice(0, 10);
+  const score = Math.round(Math.max(0, Math.min(1, 1 - (missCount / Math.max(1, words.length)))) * 100);
+
+  return {
+    available: true,
+    lang,
+    sampled: useSampling,
+    sampleSize: useSampling ? Math.min(SAMPLE_WORD_LIMIT, words.length) : words.length,
+    totalWords,
+    uniqueWords,
+    misspelledCount: missCount,
+    misspelledUnique: misspelled.length,
+    topMisspellings: top,
+    score
+  };
+}
+
+// ----------------------------
+// UTIL: SEO Keyword Optimization (uses provided keywords or extracts top keywords)
+// ----------------------------
+function analyzeSEO(pastedContent, keywords = []) {
+  const text = pastedContent.replace(/\s+/g, " ").trim().toLowerCase();
+  const words = text.split(/\s+/).map(w => w.replace(/[^a-z0-9']/g, ""));
+  const totalWords = words.filter(Boolean).length;
+
+  // If no keywords provided, extract top 5 by frequency (excluding stopwords)
   const stopwords = natural.stopwords || [];
-  
-  const expectedTokens = tokenizer.tokenize(expected.toLowerCase())
-    .filter(word => word && word.length > 2 && !stopwords.includes(word))
-    .map(word => natural.PorterStemmer.stem(word));
-  
-  const actualTokens = tokenizer.tokenize(actual.toLowerCase())
-    .filter(word => word && word.length > 2 && !stopwords.includes(word))
-    .map(word => natural.PorterStemmer.stem(word));
-
-  if (expectedTokens.length === 0 && actualTokens.length === 0) {
-    return { score: 0, summary: "Both texts contain only stop words" };
+  const freq = {};
+  words.forEach(w => {
+    if (!w || stopwords.includes(w) || w.length < 3) return;
+    freq[w] = (freq[w] || 0) + 1;
+  });
+  if (!keywords || keywords.length === 0) {
+    keywords = Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(e => e[0]);
   }
 
-  if (expectedTokens.length === 0 || actualTokens.length === 0) {
-    return { score: 100, summary: "One text is empty or contains only stop words" };
-  }
-
-  // Calculate word frequency
-  const expectedFreq = {};
-  const actualFreq = {};
-  
-  expectedTokens.forEach(word => {
-    expectedFreq[word] = (expectedFreq[word] || 0) + 1;
-  });
-  
-  actualTokens.forEach(word => {
-    actualFreq[word] = (actualFreq[word] || 0) + 1;
+  const keywordStats = keywords.map(k => {
+    const count = (words.filter(w => w === k.toLowerCase()) || []).length;
+    const density = totalWords > 0 ? count / totalWords : 0;
+    return { keyword: k, count, density: Number(density.toFixed(4)) };
   });
 
-  // Get unique words from both texts
-  const allWords = new Set([...expectedTokens, ...actualTokens]);
-  
-  // Calculate Jaccard similarity (intersection over union)
-  const intersection = expectedTokens.filter(word => actualTokens.includes(word));
-  const union = new Set([...expectedTokens, ...actualTokens]);
-  const jaccardSimilarity = intersection.length / union.size;
-  
-  // Calculate cosine similarity using TF-IDF-like approach
-  let dotProduct = 0;
-  let expectedNorm = 0;
-  let actualNorm = 0;
-  
-  allWords.forEach(word => {
-    const expectedCount = expectedFreq[word] || 0;
-    const actualCount = actualFreq[word] || 0;
-    dotProduct += expectedCount * actualCount;
-    expectedNorm += expectedCount * expectedCount;
-    actualNorm += actualCount * actualCount;
-  });
-  
-  const cosineSimilarity = expectedNorm > 0 && actualNorm > 0
-    ? dotProduct / (Math.sqrt(expectedNorm) * Math.sqrt(actualNorm))
+  // Score: coverage (how many keywords present) and average density proximity to 1-3%
+  const present = keywordStats.filter(k => k.count > 0).length;
+  const coverage = keywords.length > 0 ? present / keywords.length : 0;
+  const idealDensity = 0.015; // 1.5%
+  const densityScore = keywordStats.length > 0
+    ? 1 - (keywordStats.reduce((acc, k) => acc + Math.abs(k.density - idealDensity), 0) / keywords.length) / idealDensity
     : 0;
+  const densityClamped = Math.max(0, Math.min(1, densityScore));
 
-  // Combined similarity score (weighted average)
-  // Clamp similarity values to 0-1 range to prevent negative drift scores
-  const jaccardClamped = Math.max(0, Math.min(1, jaccardSimilarity));
-  const cosineClamped = Math.max(0, Math.min(1, cosineSimilarity));
-  const combinedSimilarity = (jaccardClamped * 0.4) + (cosineClamped * 0.6);
-  
-  // Drift score is the inverse of similarity (0-100%)
-  // Clamp to ensure it's always between 0 and 100
-  const driftScore = Math.max(0, Math.min(100, Math.round((1 - combinedSimilarity) * 100)));
-  
-  // Generate summary
-  const removedWords = expectedTokens.filter(word => !actualTokens.includes(word));
-  const addedWords = actualTokens.filter(word => !expectedTokens.includes(word));
-  
-  let summary = "";
-  if (driftScore < 10) {
-    summary = "Meaning is highly similar";
-  } else if (driftScore < 30) {
-    summary = "Minor meaning differences detected";
-  } else if (driftScore < 60) {
-    summary = "Moderate meaning drift detected";
-  } else {
-    summary = "Significant meaning drift detected";
-  }
-  
-  if (removedWords.length > 0 || addedWords.length > 0) {
-    const keyChanges = [];
-    if (removedWords.length > 0) {
-      const topRemoved = [...new Set(removedWords)].slice(0, 3).join(", ");
-      keyChanges.push(`Removed concepts: ${topRemoved}`);
-    }
-    if (addedWords.length > 0) {
-      const topAdded = [...new Set(addedWords)].slice(0, 3).join(", ");
-      keyChanges.push(`Added concepts: ${topAdded}`);
-    }
-    if (keyChanges.length > 0) {
-      summary += `. ${keyChanges.join(". ")}`;
-    }
-  }
+  const score = Math.round(((coverage * 0.6) + (densityClamped * 0.4)) * 100);
 
-  return {
-    score: driftScore,
-    summary: summary
-  };
+  return { score, keywords: keywordStats, coverage: Number(coverage.toFixed(3)) };
 }
+
+// ----------------------------
+// UTIL: Engagement metrics (CTAs, headings, lists, links)
+// ----------------------------
+function analyzeEngagement(pastedContent) {
+  const text = pastedContent;
+  const lines = text.split(/\r?\n/);
+  const headings = lines.filter(l => /^\s*#{1,6}\s+/.test(l) || /^[A-Z][A-Za-z0-9\s]{10,}$/.test(l)).length;
+  const lists = lines.filter(l => /^\s*([-*•]|\d+\.)\s+/.test(l)).length;
+  const ctaKeywords = ["buy", "subscribe", "sign up", "learn more", "contact", "get started", "download"];
+  const ctaCount = ctaKeywords.reduce((acc, k) => acc + (text.toLowerCase().split(k).length - 1), 0);
+  const links = (text.match(/https?:\/\/[^\s)'"<>]+/g) || []).length;
+  const sentences = text.split(/[.!?]+/).map(s => s.trim()).filter(Boolean).length;
+
+  // Simple scoring: headings/lists/cta/links contribute positively, extremely long sentences detract
+  const headingScore = Math.min(1, headings / 3);
+  const listScore = Math.min(1, lists / 3);
+  const ctaScore = Math.min(1, ctaCount / 2);
+  const linkScore = Math.min(1, links / 5);
+  const sentencePenalty = sentences > 0 ? Math.max(0, 1 - (sentences / 50)) : 1;
+
+  const combined = (headingScore * 0.2) + (listScore * 0.15) + (ctaScore * 0.3) + (linkScore * 0.15) + (sentencePenalty * 0.2);
+  const score = Math.round(Math.max(0, Math.min(1, combined)) * 100);
+
+  return { score, details: { headings, lists, ctaCount, links, sentences } };
+}
+
+// ----------------------------
+// UTIL: Duplicate content detection (internal repeats + vs actual)
+// ----------------------------
+function analyzeDuplicateContent(pastedContent, actualContent) {
+  const sentences = pastedContent.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+  const total = sentences.length;
+  const unique = new Set(sentences).size;
+  const internalDupRatio = total > 0 ? (1 - (unique / total)) : 0; // 0 = no duplicates
+
+  // Compare with actual content by sentence overlap ratio
+  const actualSentences = actualContent.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+  const intersection = sentences.filter(s => actualSentences.includes(s)).length;
+  const overlapRatio = Math.max(0, Math.min(1, intersection / Math.max(1, total)));
+
+  // Score: lower duplication (internal) and reasonable overlap (not exact copy) are better.
+  const score = Math.round(Math.max(0, Math.min(1, (1 - internalDupRatio) * 0.7 + (1 - overlapRatio) * 0.3)) * 100);
+
+  return { score, details: { totalSentences: total, uniqueSentences: unique, internalDupRatio: Number(internalDupRatio.toFixed(3)), overlapRatio: Number(overlapRatio.toFixed(3)) } };
+}
+
+// ----------------------------
+// UTIL: Broken links check (async)
+// ----------------------------
+async function checkBrokenLinks(pastedContent, timeoutMs = 3000) {
+  // Behavior based on BROKEN_LINK_MODE:
+  // - "off": skip checks and return perfect score
+  // - "fast": check up to BROKEN_LINK_MAX_URLS with short timeout
+  // - "sync": check all URLs with configured timeoutMs
+  const urlsAll = Array.from(new Set((pastedContent.match(/https?:\/\/[^\s)'"<>]+/g) || [])));
+  if (urlsAll.length === 0) return { score: 100, details: { urls: [] } };
+
+  if (BROKEN_LINK_MODE === "off") {
+    return { score: 100, details: { skipped: true, mode: "off", urlCount: urlsAll.length } };
+  }
+
+  const urls = BROKEN_LINK_MODE === "fast" ? urlsAll.slice(0, BROKEN_LINK_MAX_URLS) : urlsAll;
+  const timeout = timeoutMs || BROKEN_LINK_TIMEOUT_MS;
+
+  const checks = await Promise.allSettled(urls.map(url => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    return fetch(url, { method: "HEAD", signal: controller.signal })
+      .then(resp => {
+        clearTimeout(timer);
+        return { url, ok: resp.ok, status: resp.status };
+      })
+      .catch(err => {
+        clearTimeout(timer);
+        return { url, ok: false, status: err.name === "AbortError" ? "timeout" : "error" };
+      });
+  }));
+
+  const results = checks.map(c => c.status === "fulfilled" ? c.value : { url: null, ok: false, status: "error" });
+  const broken = results.filter(r => !r.ok).length;
+  const score = Math.round(Math.max(0, Math.min(1, 1 - (broken / results.length))) * 100);
+  return { score, details: { mode: BROKEN_LINK_MODE, urlsChecked: results.length, urls: results } };
+}
+
+// ----------------------------
+// UTIL: Intent relevance (cosine similarity between pasted and actual)
+// ----------------------------
+function computeCosineSimilarity(a, b) {
+  const tokenize = txt => txt.toLowerCase().replace(/[^a-z0-9\s']/g, " ").split(/\s+/).filter(w => w.length > 2);
+  const toksA = tokenize(a);
+  const toksB = tokenize(b);
+  const freqA = {};
+  const freqB = {};
+  toksA.forEach(t => { freqA[t] = (freqA[t] || 0) + 1; });
+  toksB.forEach(t => { freqB[t] = (freqB[t] || 0) + 1; });
+  const all = new Set([...Object.keys(freqA), ...Object.keys(freqB)]);
+  let dot = 0, normA = 0, normB = 0;
+  all.forEach(k => {
+    const va = freqA[k] || 0;
+    const vb = freqB[k] || 0;
+    dot += va * vb;
+    normA += va * va;
+    normB += vb * vb;
+  });
+  const sim = (normA > 0 && normB > 0) ? (dot / (Math.sqrt(normA) * Math.sqrt(normB))) : 0;
+  return sim;
+}
+
+// (Meaning-drift analysis removed)
 
 // ----------------------------
 // API: Compare
@@ -315,31 +488,52 @@ app.post("/compare", async (req, res) => {
     const { expectedHtml, actualHtml } =
       buildHtmlDiff(expectedNormalized, actualNormalized);
 
-    // Calculate meaning drift (analyzing only pasted/expected content)
-    console.log("\n🔍 ===== Starting Meaning Drift Analysis (Pasted Content Only) =====");
-    console.log("Pasted (Expected) text length:", expectedNormalized.length);
-    
-    let meaningDrift = { score: 0, summary: "Analysis unavailable" };
-    try {
-      meaningDrift = calculateMeaningDriftForPastedContent(expectedNormalized);
-      console.log("✅ Meaning drift analysis complete");
-      console.log("   Score:", meaningDrift.score);
-      console.log("   Summary:", meaningDrift.summary);
-    } catch (err) {
-      console.error("❌ Meaning drift calculation error:", err);
-      // Continue without meaning drift if calculation fails
-    }
-    console.log("===========================================\n");
+    // Combine results (include CQI + additional analyses for pasted content)
+    const cqi = calculateCQI(expectedNormalized);
+    const seo = analyzeSEO(expectedNormalized, req.body.keywords || []);
+    const engagement = analyzeEngagement(expectedNormalized);
+    const duplication = analyzeDuplicateContent(expectedNormalized, actualNormalized);
+    const brokenLinks = await checkBrokenLinks(expectedNormalized);
+    const intentRelevanceScore = Math.round(computeCosineSimilarity(expectedNormalized, actualNormalized) * 100);
 
-    // Combine results
+    const spelling = await analyzeSpelling(expectedNormalized, req.body.lang || "en");
     const response = {
       expectedHtml,
       actualHtml,
-      meaningDrift
+      cqi,
+      spelling,
+      seo,
+      engagement,
+      duplication,
+      brokenLinks,
+      intentRelevance: {
+        score: intentRelevanceScore,
+        summary: intentRelevanceScore >= 70 ? "High relevance" : intentRelevanceScore >= 40 ? "Moderate relevance" : "Low relevance"
+      }
     };
 
     res.json(response);
 
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------
+// API: CQI only (pasted content)
+// ----------------------------
+app.post("/cqi", async (req, res) => {
+  try {
+    const { pastedContent } = req.body;
+    if (!pastedContent) {
+      return res.status(400).json({ error: "Missing pastedContent" });
+    }
+
+    const expectedNormalized = normalizeText(pastedContent);
+    const cqi = calculateCQI(expectedNormalized);
+    const spelling = await analyzeSpelling(expectedNormalized, req.body.lang || "en");
+    res.json({ cqi, spelling });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

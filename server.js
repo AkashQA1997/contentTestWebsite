@@ -7,6 +7,59 @@ import path from "path";
 import { fileURLToPath } from "url";
 import readabilityScores from "readability-scores";
 import natural from "natural";
+import nspell from "nspell";
+
+// Spelling engine cache for multiple languages
+const spellCache = {}; // lang -> { spell, ready }
+
+// Supported languages and their dictionary package names
+const DICT_MAP = {
+  en: "dictionary-en",
+  es: "dictionary-es",
+  fr: "dictionary-fr",
+  de: "dictionary-de",
+  pt: "dictionary-pt"
+};
+
+async function loadDictionaryFor(lang = "en") {
+  if (spellCache[lang]) return spellCache[lang];
+  const pkgName = DICT_MAP[lang] || DICT_MAP["en"];
+  const entry = { spell: null, ready: false };
+  spellCache[lang] = entry;
+  try {
+    // dynamic import
+    const dictModule = await import(pkgName);
+    const loader = dictModule && (dictModule.default || dictModule);
+    let dict;
+    if (typeof loader === "function") {
+      // callback style
+      dict = await new Promise((resolve, reject) => {
+        try {
+          loader((err, d) => {
+            if (err) return reject(err);
+            resolve(d);
+          });
+        } catch (e) {
+          reject(e);
+        }
+      });
+    } else if (loader && typeof loader.then === "function") {
+      dict = await loader();
+    } else if (loader && (loader.aff || loader.dic)) {
+      dict = loader;
+    } else {
+      throw new Error("Unsupported dictionary export shape");
+    }
+
+    entry.spell = nspell(dict);
+    entry.ready = true;
+    console.log(`✅ Spelling dictionary loaded for ${lang}`);
+  } catch (err) {
+    entry.ready = false;
+    console.error(`Spelling dictionary load error for ${lang}:`, err.message || err);
+  }
+  return entry;
+}
 
 const app = express();
 const PORT = 3000;
@@ -207,6 +260,61 @@ function calculateCQI(pastedContent) {
 }
 
 // ----------------------------
+// UTIL: Spelling analysis (uses nspell)
+// ----------------------------
+async function analyzeSpelling(pastedContent, lang = "en") {
+  const entry = await loadDictionaryFor(lang);
+  if (!entry || !entry.ready) {
+    return { available: false, message: `Dictionary for ${lang} not loaded` };
+  }
+  const spell = entry.spell;
+
+  const textFull = pastedContent.replace(/\s+/g, " ").trim();
+  const wordsFull = textFull.split(/\s+/).filter(Boolean);
+  const totalWords = wordsFull.length;
+  const useSampling = totalWords > SAMPLE_WORD_LIMIT;
+  const words = useSampling ? wordsFull.slice(0, SAMPLE_WORD_LIMIT) : wordsFull;
+
+  const freq = {};
+  words.forEach(w => {
+    const cleaned = w.toLowerCase().replace(/[^a-z\u00C0-\u024F']/g, ""); // allow accented letters
+    if (!cleaned || cleaned.length < 2) return;
+    freq[cleaned] = (freq[cleaned] || 0) + 1;
+  });
+
+  const uniqueWords = Object.keys(freq).length;
+  const misspelled = [];
+  let missCount = 0;
+  for (const [word, count] of Object.entries(freq)) {
+    try {
+      if (!spell.correct(word)) {
+        misspelled.push({ word, count, suggestions: (spell.suggest(word) || []).slice(0, 3) });
+        missCount += count;
+      }
+    } catch (e) {
+      // skip problematic words
+    }
+  }
+
+  misspelled.sort((a, b) => b.count - a.count);
+  const top = misspelled.slice(0, 10);
+  const score = Math.round(Math.max(0, Math.min(1, 1 - (missCount / Math.max(1, words.length)))) * 100);
+
+  return {
+    available: true,
+    lang,
+    sampled: useSampling,
+    sampleSize: useSampling ? Math.min(SAMPLE_WORD_LIMIT, words.length) : words.length,
+    totalWords,
+    uniqueWords,
+    misspelledCount: missCount,
+    misspelledUnique: misspelled.length,
+    topMisspellings: top,
+    score
+  };
+}
+
+// ----------------------------
 // UTIL: SEO Keyword Optimization (uses provided keywords or extracts top keywords)
 // ----------------------------
 function analyzeSEO(pastedContent, keywords = []) {
@@ -388,10 +496,12 @@ app.post("/compare", async (req, res) => {
     const brokenLinks = await checkBrokenLinks(expectedNormalized);
     const intentRelevanceScore = Math.round(computeCosineSimilarity(expectedNormalized, actualNormalized) * 100);
 
+    const spelling = await analyzeSpelling(expectedNormalized, req.body.lang || "en");
     const response = {
       expectedHtml,
       actualHtml,
       cqi,
+      spelling,
       seo,
       engagement,
       duplication,
@@ -422,7 +532,8 @@ app.post("/cqi", async (req, res) => {
 
     const expectedNormalized = normalizeText(pastedContent);
     const cqi = calculateCQI(expectedNormalized);
-    res.json({ cqi });
+    const spelling = await analyzeSpelling(expectedNormalized, req.body.lang || "en");
+    res.json({ cqi, spelling });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

@@ -16,6 +16,17 @@ const howToBtn = document.getElementById("howToBtn");
 const howToModal = document.getElementById("howToModal");
 const howToClose = document.getElementById("howToClose");
 const loaderOverlay = document.getElementById("loaderOverlay");
+const langSelect = document.getElementById("langSelect");
+
+// Initialize language selector (persist in localStorage)
+const LANG_KEY = "cqi_lang";
+if (langSelect) {
+  const saved = localStorage.getItem(LANG_KEY) || "en";
+  langSelect.value = saved;
+  langSelect.addEventListener("change", () => {
+    localStorage.setItem(LANG_KEY, langSelect.value);
+  });
+}
 
 function escapeHtml(str) {
   return String(str)
@@ -24,6 +35,45 @@ function escapeHtml(str) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightMisspellingsInHtml(html, words) {
+  if (!words || words.length === 0) return html;
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html || "";
+  const pattern = '\\b(' + words.map(w => escapeRegExp(w)).join('|') + ')\\b';
+  const regex = new RegExp(pattern, 'gi');
+
+  function walk(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.nodeValue;
+      if (!text || !regex.test(text)) return;
+      regex.lastIndex = 0;
+      const frag = document.createDocumentFragment();
+      let lastIndex = 0;
+      let match;
+      while ((match = regex.exec(text)) !== null) {
+        const idx = match.index;
+        if (idx > lastIndex) frag.appendChild(document.createTextNode(text.slice(lastIndex, idx)));
+        const span = document.createElement("span");
+        span.className = "spelling-miss";
+        span.textContent = match[0];
+        frag.appendChild(span);
+        lastIndex = idx + match[0].length;
+      }
+      if (lastIndex < text.length) frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+      node.parentNode.replaceChild(frag, node);
+    } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName !== "SCRIPT" && node.tagName !== "STYLE") {
+      Array.from(node.childNodes).forEach(walk);
+    }
+  }
+
+  Array.from(wrapper.childNodes).forEach(walk);
+  return wrapper.innerHTML;
 }
 
 function computeMismatchPercent(expectedHtml, actualHtml) {
@@ -131,6 +181,21 @@ if (toggleModeBtn && cqiSection) {
   });
 }
 
+// Back button in CQI view
+const cqiBackBtn = document.getElementById("cqiBackBtn");
+if (cqiBackBtn) {
+  cqiBackBtn.addEventListener("click", () => {
+    // show compare form
+    cqiSection.style.display = "none";
+    const compareCard = document.querySelector("section.card");
+    if (compareCard) compareCard.style.display = "";
+    // update toggle button text
+    if (toggleModeBtn) toggleModeBtn.textContent = "CQI only";
+    // scroll to top of page for UX
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  });
+}
+
 if (cqiClearBtn && cqiPasted) {
   cqiClearBtn.addEventListener("click", () => {
     cqiPasted.value = "";
@@ -160,7 +225,7 @@ if (runCqiBtn) {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({ pastedContent: pasted }),
+      body: JSON.stringify({ pastedContent: pasted, lang: (langSelect && langSelect.value) || 'en' }),
         mode: "cors",
         cache: "no-cache"
       });
@@ -195,6 +260,26 @@ if (runCqiBtn) {
           </div>
         </div>
       `;
+      // show pasted content preview with spelling highlights (if available)
+      const spelling = data.spelling || {};
+      const miss = (spelling.topMisspellings || []).map(s => s.word).filter(Boolean);
+      let pastedPreviewHtml = escapeHtml(pasted);
+      if (miss.length > 0) {
+        try {
+          // use a temporary element to apply spans
+          const tmp = document.createElement("div");
+          tmp.textContent = pasted;
+          pastedPreviewHtml = highlightMisspellingsInHtml(escapeHtml(pasted), miss);
+        } catch (e) {
+          pastedPreviewHtml = escapeHtml(pasted);
+        }
+      }
+      const previewNode = document.createElement("div");
+      previewNode.className = "pastedPreview";
+      previewNode.innerHTML = pastedPreviewHtml;
+      // append preview after metrics
+      const metricsContainer = output.querySelector(".metricsRow");
+      if (metricsContainer) metricsContainer.appendChild(previewNode);
 
       // attach calc toggle (same logic as compare flow)
       const showCalcBtn = document.getElementById("showCalcBtn");
@@ -304,7 +389,7 @@ form.addEventListener("submit", async (e) => {
         "Content-Type": "application/json",
         "Accept": "application/json"
       },
-      body: JSON.stringify({ url, locator, type, pastedContent }),
+      body: JSON.stringify({ url, locator, type, pastedContent, lang: (langSelect && langSelect.value) || 'en' }),
       mode: 'cors', // Explicitly enable CORS
       cache: 'no-cache'
     });
@@ -359,12 +444,25 @@ form.addEventListener("submit", async (e) => {
       `;
     }
 
+    // Highlight spelling mistakes in expectedHtml if present
+    let expectedHtmlHighlighted = data.expectedHtml;
+    const spelling = data.spelling || {};
+    const miss = (spelling.topMisspellings || []).map(s => s.word).filter(Boolean);
+    if (miss.length > 0) {
+      try {
+        expectedHtmlHighlighted = highlightMisspellingsInHtml(data.expectedHtml, miss);
+      } catch (e) {
+        // fallback to raw expectedHtml if highlighting fails
+        expectedHtmlHighlighted = data.expectedHtml;
+      }
+    }
+
     // Side-by-side render + metrics panel (applies to pasted content only)
     output.innerHTML = `
       <div class="diffGrid">
         <div class="diffCol">
           <h3>Pasted (Expected)</h3>
-          <div>${data.expectedHtml}</div>
+          <div>${expectedHtmlHighlighted}</div>
         </div>
         <div class="diffCol">
           <h3>From URL (Actual)</h3>

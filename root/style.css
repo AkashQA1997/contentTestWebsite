@@ -277,6 +277,9 @@ body::before {
   border-radius: 16px;
   box-shadow: 0 24px 80px rgba(2,6,23,0.22);
   overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal__head {
@@ -303,6 +306,8 @@ body::before {
 .modal__body {
   padding: 14px 16px 16px;
   color: rgba(15,23,42,0.88);
+  overflow-y: auto;
+  max-height: calc(90vh - 80px);
 }
 
 .howto {
@@ -737,6 +742,15 @@ textarea { resize: vertical; min-height: 180px; }
   padding: 1px 3px;
   border-radius: 3px;
 }
+.pastedPreviewBlock {
+  margin-top: 14px;
+}
+.pastedPreviewTitle {
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(15,23,42,0.8);
+  margin: 0 0 6px;
+}
 .pastedPreview {
   white-space: pre-wrap;
   line-height: 1.5;
@@ -824,16 +838,25 @@ textarea { resize: vertical; min-height: 180px; }
   padding: 4px 10px;
 }
 .metric__note {
-  font-size: 11px;
-  color: rgba(30,41,59,0.5);
+  font-size: 14px;
+  color: rgba(1, 5, 11, 0.5);
   margin-top: 4px;
   line-height: 1.4;
+}
+.metric__note--seo-ok {
+  color: #047857;
+  font-weight: 700;
+}
+.metric__note--seo-bad {
+  color: #b91c1c;
+  font-weight: 700;
 }
 
 /* ── Wide modal variant (CQI standards) ─────── */
 .modal--wide {
   max-width: 780px;
   width: 96vw;
+  max-height: 90vh;
 }
 .modal__intro {
   font-size: 13.5px;

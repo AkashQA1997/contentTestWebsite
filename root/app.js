@@ -22,6 +22,7 @@ const loaderOverlay = document.getElementById("loaderOverlay");
 const loaderTitle   = document.getElementById("loaderTitle");
 const loaderSub     = document.getElementById("loaderSub");
 const langSelect = document.getElementById("langSelect");
+const heroTitle = document.querySelector(".hero__title");
 
 // Initialize language selector (persist in localStorage)
 const LANG_KEY = "cqi_lang";
@@ -360,6 +361,7 @@ if (toggleModeBtn && cqiSection) {
       cqiSection.style.display = "none";
       document.querySelector("section.card").style.display = ""; // the compare card
       toggleModeBtn.textContent = "Check CQI Score Only";
+      if (heroTitle) heroTitle.textContent = "Compare pasted content vs live website text";
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       // switching FROM Compare view TO CQI-only view
@@ -367,11 +369,12 @@ if (toggleModeBtn && cqiSection) {
       output.innerHTML = "";
       status.innerHTML = "";
       if (runMeta) runMeta.innerHTML = "";
-      if (cqiPasted) cqiPasted.value = "";
+      resetCqiUi();
 
       cqiSection.style.display = "";
       document.querySelector("section.card").style.display = "none";
       toggleModeBtn.textContent = "Compare";
+      if (heroTitle) heroTitle.textContent = "Check Content Quality (CQI) for your copy";
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });
@@ -385,13 +388,15 @@ if (cqiBackBtn) {
     output.innerHTML = "";
     status.innerHTML = "";
     if (runMeta) runMeta.innerHTML = "";
+    resetCqiUi();
 
     // show compare form
     cqiSection.style.display = "none";
     const compareCard = document.querySelector("section.card");
     if (compareCard) compareCard.style.display = "";
     // update toggle button text
-    if (toggleModeBtn) toggleModeBtn.textContent = "Check Content CQI Only";
+    if (toggleModeBtn) toggleModeBtn.textContent = "Check CQI Score Only";
+    if (heroTitle) heroTitle.textContent = "Compare pasted content vs live website text";
     // scroll to top of page for UX
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
@@ -425,14 +430,25 @@ function updateWordCount() {
   }
 }
 
+function resetCqiUi() {
+  if (cqiPasted) cqiPasted.value = "";
+  if (wordCountNum) wordCountNum.textContent = "0 words";
+  if (wordCountSection) {
+    wordCountSection.textContent = "";
+    wordCountSection.style.color = "";
+  }
+  if (wordCountWarning) {
+    wordCountWarning.textContent = "";
+  }
+}
+
 if (cqiPasted) {
   cqiPasted.addEventListener("input", updateWordCount);
 }
 
 if (cqiClearBtn && cqiPasted) {
   cqiClearBtn.addEventListener("click", () => {
-    cqiPasted.value = "";
-    updateWordCount();
+    resetCqiUi();
     // clear outputs
     output.innerHTML = "";
     status.innerHTML = "";
@@ -502,11 +518,21 @@ if (runCqiBtn) {
         ? `<div class="sectionTarget ${st.cls}">${st.icon} ${st.label}</div>`
         : "";
 
-      // Top status bar
+      // Simple SEO hint based on CQI vs target
+      const seoHintHtml = (() => {
+        if (!sTarget) return "";
+        const meets = cqiStatus === "exceeds" || cqiStatus === "meets";
+        if (meets) {
+          return `<div class="metric__note metric__note--seo-ok"><b>SEO hint: Content quality meets the CQI target for this section. This is generally healthy for on-page SEO.</b></div>`;
+        }
+        return `<div class="metric__note metric__note--seo-bad"><b>SEO hint: CQI is below the target for this section. Improving readability, vocabulary, and depth will also support better on-page SEO.</b></div>`;
+      })();
+
+      // Top status bar (compact: only show icon + CQI score)
       const statusCls = (cqiStatus === "exceeds" || cqiStatus === "meets") ? "pass"
                       : (cqiStatus === "near") ? "warn"
                       : "fail";
-      status.innerHTML = `<span class="${statusCls}">${st.icon} CQI: ${cqi.score} — ${escapeHtml(cqi.summary)}</span>`;
+      status.innerHTML = `<span class="${statusCls}">${st.icon} CQI: ${cqi.score}</span>`;
       // render CQI card + calculation toggle
       output.innerHTML = `
         <div class="metricsRow">
@@ -519,6 +545,7 @@ if (runCqiBtn) {
               <div class="metric__sub">${escapeHtml(cqi.summary)}</div>
               ${cqi.reliable === false ? '<div class="metric__warn">Unreliable (short text)</div>' : ''}
               ${sNote ? `<div class="metric__note">${escapeHtml(sNote)}</div>` : ""}
+              ${seoHintHtml}
               <button class="calcToggle" id="showCalcBtn" type="button">Show calculation</button>
               <div class="calcDetails" id="calcDetails" style="display:none;"></div>
             </div>
@@ -543,9 +570,14 @@ if (runCqiBtn) {
       const previewNode = document.createElement("div");
       previewNode.className = "pastedPreview";
       previewNode.innerHTML = pastedPreviewHtml;
+      // wrap in a container with heading
+      const previewBlock = document.createElement("div");
+      previewBlock.className = "pastedPreviewBlock";
+      previewBlock.innerHTML = '<div class="pastedPreviewTitle">Pasted content (spelling check view)</div>';
+      previewBlock.appendChild(previewNode);
       // append preview after metrics
       const metricsContainer = output.querySelector(".metricsRow");
-      if (metricsContainer) metricsContainer.appendChild(previewNode);
+      if (metricsContainer) metricsContainer.appendChild(previewBlock);
 
       // suggestions for improving CQI
       const suggNode = document.getElementById("cqiSuggestions");
@@ -669,6 +701,17 @@ form.addEventListener("submit", async (e) => {
 
     // CQI (pasted content) and other analyses
     const cqi = data.cqi || null;
+    // Simple SEO hint based on CQI vs target
+    const seoHintHtml = (() => {
+      if (!cqi || !cqi.targetCQI) return "";
+      const statusKey = cqi.status || "";
+      const meets = statusKey === "exceeds" || statusKey === "meets";
+      if (meets) {
+        return `<div class="metric__note metric__note--seo-ok"><b>SEO hint: Content quality meets the CQI target for this section. This is generally healthy for on-page SEO.</b></div>`;
+      }
+      return `<div class="metric__note metric__note--seo-bad"><b>SEO hint: CQI is below the target for this section. Improving readability, vocabulary, and depth will also support better on-page SEO.</b></div>`;
+    })();
+
     // Only show CQI in the UI per client request.
     const cqiHtml = cqi
       ? `<div class="metric cqiMetric">
@@ -676,6 +719,7 @@ form.addEventListener("submit", async (e) => {
            <div class="metric__value">${cqi.score}</div>
            <div class="metric__sub">${escapeHtml(cqi.summary)}</div>
            ${cqi.reliable === false ? '<div class="metric__warn">Unreliable (short text)</div>' : ''}
+           ${seoHintHtml}
            <button class="calcToggle" id="showCalcBtn" type="button">Show calculation</button>
            <div class="calcDetails" id="calcDetails" style="display:none;"></div>
          </div>`

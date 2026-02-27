@@ -277,6 +277,9 @@ body::before {
   border-radius: 16px;
   box-shadow: 0 24px 80px rgba(2,6,23,0.22);
   overflow: hidden;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .modal__head {
@@ -303,6 +306,8 @@ body::before {
 .modal__body {
   padding: 14px 16px 16px;
   color: rgba(15,23,42,0.88);
+  overflow-y: auto;
+  max-height: calc(90vh - 80px);
 }
 
 .howto {
@@ -834,6 +839,7 @@ textarea { resize: vertical; min-height: 180px; }
 .modal--wide {
   max-width: 780px;
   width: 96vw;
+  max-height: 90vh;
 }
 .modal__intro {
   font-size: 13.5px;

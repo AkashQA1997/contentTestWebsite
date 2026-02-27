@@ -22,6 +22,7 @@ const loaderOverlay = document.getElementById("loaderOverlay");
 const loaderTitle   = document.getElementById("loaderTitle");
 const loaderSub     = document.getElementById("loaderSub");
 const langSelect = document.getElementById("langSelect");
+const heroTitle = document.querySelector(".hero__title");
 
 // Initialize language selector (persist in localStorage)
 const LANG_KEY = "cqi_lang";
@@ -360,6 +361,7 @@ if (toggleModeBtn && cqiSection) {
       cqiSection.style.display = "none";
       document.querySelector("section.card").style.display = ""; // the compare card
       toggleModeBtn.textContent = "Check CQI Score Only";
+      if (heroTitle) heroTitle.textContent = "Compare pasted content vs live website text";
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else {
       // switching FROM Compare view TO CQI-only view
@@ -367,11 +369,12 @@ if (toggleModeBtn && cqiSection) {
       output.innerHTML = "";
       status.innerHTML = "";
       if (runMeta) runMeta.innerHTML = "";
-      if (cqiPasted) cqiPasted.value = "";
+      resetCqiUi();
 
       cqiSection.style.display = "";
       document.querySelector("section.card").style.display = "none";
       toggleModeBtn.textContent = "Compare";
+      if (heroTitle) heroTitle.textContent = "Check Content Quality (CQI) for your copy";
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });
@@ -385,13 +388,15 @@ if (cqiBackBtn) {
     output.innerHTML = "";
     status.innerHTML = "";
     if (runMeta) runMeta.innerHTML = "";
+    resetCqiUi();
 
     // show compare form
     cqiSection.style.display = "none";
     const compareCard = document.querySelector("section.card");
     if (compareCard) compareCard.style.display = "";
     // update toggle button text
-    if (toggleModeBtn) toggleModeBtn.textContent = "Check Content CQI Only";
+    if (toggleModeBtn) toggleModeBtn.textContent = "Check CQI Score Only";
+    if (heroTitle) heroTitle.textContent = "Compare pasted content vs live website text";
     // scroll to top of page for UX
     window.scrollTo({ top: 0, behavior: "smooth" });
   });
@@ -425,14 +430,25 @@ function updateWordCount() {
   }
 }
 
+function resetCqiUi() {
+  if (cqiPasted) cqiPasted.value = "";
+  if (wordCountNum) wordCountNum.textContent = "0 words";
+  if (wordCountSection) {
+    wordCountSection.textContent = "";
+    wordCountSection.style.color = "";
+  }
+  if (wordCountWarning) {
+    wordCountWarning.textContent = "";
+  }
+}
+
 if (cqiPasted) {
   cqiPasted.addEventListener("input", updateWordCount);
 }
 
 if (cqiClearBtn && cqiPasted) {
   cqiClearBtn.addEventListener("click", () => {
-    cqiPasted.value = "";
-    updateWordCount();
+    resetCqiUi();
     // clear outputs
     output.innerHTML = "";
     status.innerHTML = "";

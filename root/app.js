@@ -518,11 +518,21 @@ if (runCqiBtn) {
         ? `<div class="sectionTarget ${st.cls}">${st.icon} ${st.label}</div>`
         : "";
 
-      // Top status bar
+      // Simple SEO hint based on CQI vs target
+      const seoHintHtml = (() => {
+        if (!sTarget) return "";
+        const meets = cqiStatus === "exceeds" || cqiStatus === "meets";
+        if (meets) {
+          return `<div class="metric__note metric__note--seo-ok"><b>SEO hint: Content quality meets the CQI target for this section. This is generally healthy for on-page SEO.</b></div>`;
+        }
+        return `<div class="metric__note metric__note--seo-bad"><b>SEO hint: CQI is below the target for this section. Improving readability, vocabulary, and depth will also support better on-page SEO.</b></div>`;
+      })();
+
+      // Top status bar (compact: only show icon + CQI score)
       const statusCls = (cqiStatus === "exceeds" || cqiStatus === "meets") ? "pass"
                       : (cqiStatus === "near") ? "warn"
                       : "fail";
-      status.innerHTML = `<span class="${statusCls}">${st.icon} CQI: ${cqi.score} — ${escapeHtml(cqi.summary)}</span>`;
+      status.innerHTML = `<span class="${statusCls}">${st.icon} CQI: ${cqi.score}</span>`;
       // render CQI card + calculation toggle
       output.innerHTML = `
         <div class="metricsRow">
@@ -535,6 +545,7 @@ if (runCqiBtn) {
               <div class="metric__sub">${escapeHtml(cqi.summary)}</div>
               ${cqi.reliable === false ? '<div class="metric__warn">Unreliable (short text)</div>' : ''}
               ${sNote ? `<div class="metric__note">${escapeHtml(sNote)}</div>` : ""}
+              ${seoHintHtml}
               <button class="calcToggle" id="showCalcBtn" type="button">Show calculation</button>
               <div class="calcDetails" id="calcDetails" style="display:none;"></div>
             </div>
@@ -559,9 +570,14 @@ if (runCqiBtn) {
       const previewNode = document.createElement("div");
       previewNode.className = "pastedPreview";
       previewNode.innerHTML = pastedPreviewHtml;
+      // wrap in a container with heading
+      const previewBlock = document.createElement("div");
+      previewBlock.className = "pastedPreviewBlock";
+      previewBlock.innerHTML = '<div class="pastedPreviewTitle">Pasted content (spelling check view)</div>';
+      previewBlock.appendChild(previewNode);
       // append preview after metrics
       const metricsContainer = output.querySelector(".metricsRow");
-      if (metricsContainer) metricsContainer.appendChild(previewNode);
+      if (metricsContainer) metricsContainer.appendChild(previewBlock);
 
       // suggestions for improving CQI
       const suggNode = document.getElementById("cqiSuggestions");
@@ -685,6 +701,17 @@ form.addEventListener("submit", async (e) => {
 
     // CQI (pasted content) and other analyses
     const cqi = data.cqi || null;
+    // Simple SEO hint based on CQI vs target
+    const seoHintHtml = (() => {
+      if (!cqi || !cqi.targetCQI) return "";
+      const statusKey = cqi.status || "";
+      const meets = statusKey === "exceeds" || statusKey === "meets";
+      if (meets) {
+        return `<div class="metric__note metric__note--seo-ok"><b>SEO hint: Content quality meets the CQI target for this section. This is generally healthy for on-page SEO.</b></div>`;
+      }
+      return `<div class="metric__note metric__note--seo-bad"><b>SEO hint: CQI is below the target for this section. Improving readability, vocabulary, and depth will also support better on-page SEO.</b></div>`;
+    })();
+
     // Only show CQI in the UI per client request.
     const cqiHtml = cqi
       ? `<div class="metric cqiMetric">
@@ -692,6 +719,7 @@ form.addEventListener("submit", async (e) => {
            <div class="metric__value">${cqi.score}</div>
            <div class="metric__sub">${escapeHtml(cqi.summary)}</div>
            ${cqi.reliable === false ? '<div class="metric__warn">Unreliable (short text)</div>' : ''}
+           ${seoHintHtml}
            <button class="calcToggle" id="showCalcBtn" type="button">Show calculation</button>
            <div class="calcDetails" id="calcDetails" style="display:none;"></div>
          </div>`

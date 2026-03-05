@@ -7,7 +7,7 @@ const apiPill = document.getElementById("apiPill");
 const apiDot = document.getElementById("apiDot");
 const apiLabel = document.getElementById("apiLabel");
 const clearBtn = document.getElementById("clearBtn");
-const toggleModeBtn = document.getElementById("toggleModeBtn");
+const toggleModeBtn = document.getElementById("toggleModeBtn"); // may be null now; legacy toggle
 const cqiSection = document.getElementById("cqiSection");
 const runCqiBtn = document.getElementById("runCqiBtn");
 const cqiClearBtn = document.getElementById("cqiClearBtn");
@@ -23,6 +23,21 @@ const loaderTitle   = document.getElementById("loaderTitle");
 const loaderSub     = document.getElementById("loaderSub");
 const langSelect = document.getElementById("langSelect");
 const heroTitle = document.querySelector(".hero__title");
+const modeLanding = document.getElementById("modeLanding");
+const modeCompareBtn = document.getElementById("modeCompareBtn");
+const modeCqiBtn = document.getElementById("modeCqiBtn");
+const modeOriginalityBtn = document.getElementById("modeOriginalityBtn");
+const compareCard = document.getElementById("compareCard");
+const compareBackBtn = document.getElementById("compareBackBtn");
+const originalitySection = document.getElementById("originalitySection");
+const toggleOriginalityBtn = document.getElementById("toggleOriginalityBtn");
+const originalityBackBtn = document.getElementById("originalityBackBtn");
+const runOriginalityBtn = document.getElementById("runOriginalityBtn");
+const originalityClearBtn = document.getElementById("originalityClearBtn");
+const originalityText = document.getElementById("originalityText");
+const howToOriginalityBtn = document.getElementById("howToOriginalityBtn");
+const howToOriginalityModal = document.getElementById("howToOriginalityModal");
+const howToOriginalityClose = document.getElementById("howToOriginalityClose");
 
 // Initialize language selector (persist in localStorage)
 const LANG_KEY = "cqi_lang";
@@ -202,6 +217,32 @@ function buildCqiCalcHtml(cqi) {
   return tableHtml;
 }
 
+function buildLanguageToolHtml(languageTool) {
+  const intro = [
+    "LanguageTool checks: <b>spelling</b> · <b>grammar</b> · <b>context errors</b> · <b>repeated words</b> · <b>punctuation</b>.",
+    "Fully free when <a href=\"https://languagetool.org\" target=\"_blank\" rel=\"noopener\">self-hosted</a>."
+  ].join(" ");
+  if (!languageTool || !languageTool.available) {
+    const msg = languageTool?.message || "Not available";
+    return `<div class="languageToolBlock"><h4>Spelling + grammar (LanguageTool)</h4><p class="languageToolCallout">${intro}</p><p class="languageToolStatus">${escapeHtml(msg)}</p></div>`;
+  }
+  const matches = languageTool.matches || [];
+  if (matches.length === 0) {
+    return `<div class="languageToolBlock"><h4>Spelling + grammar (LanguageTool)</h4><p class="languageToolCallout">${intro}</p><p class="languageToolStatus">No issues found.</p></div>`;
+  }
+  let html = `<div class="languageToolBlock"><h4>Spelling + grammar (LanguageTool)</h4><p class="languageToolCallout">${intro}</p><ul class="languageToolList">`;
+  matches.slice(0, 20).forEach(m => {
+    const frag = (m.fragment || "").trim() || "(fragment)";
+    const msg = m.shortMessage || m.message || "Issue";
+    const sugg = (m.replacements && m.replacements.length) ? ` → ${m.replacements.slice(0, 3).join(", ")}` : "";
+    html += `<li><strong>${escapeHtml(frag)}</strong>: ${escapeHtml(msg)}${escapeHtml(sugg)}</li>`;
+  });
+  if (matches.length > 20) html += `<li class="languageToolMore">… and ${matches.length - 20} more.</li>`;
+  if (languageTool.truncated) html += '<li class="languageToolWarn">Text was truncated to 20KB for the check.</li>';
+  html += "</ul></div>";
+  return html;
+}
+
 function highlightMisspellingsInHtml(html, words) {
   if (!words || words.length === 0) return html;
   const wrapper = document.createElement("div");
@@ -299,11 +340,57 @@ function setLoading(isLoading, mode = "compare") {
     if (mode === "cqi") {
       loaderTitle.textContent = "Analysing content quality…";
       loaderSub.textContent   = "Calculating CQI score and suggestions…";
+    } else if (mode === "originality") {
+      loaderTitle.textContent = "Checking originality…";
+      loaderSub.textContent   = "AI detection and plagiarism check…";
     } else {
       loaderTitle.textContent = "Running comparison";
       loaderSub.textContent   = "Fetching content and generating diff…";
     }
   }
+}
+
+// ---------- View helpers ----------
+function showLandingView() {
+  if (modeLanding) modeLanding.style.display = "";
+  if (compareCard) compareCard.style.display = "none";
+  if (cqiSection) cqiSection.style.display = "none";
+  if (originalitySection) originalitySection.style.display = "none";
+  if (output) output.innerHTML = "";
+  if (status) status.innerHTML = "";
+  if (runMeta) runMeta.innerHTML = "";
+  if (heroTitle) heroTitle.textContent = "Choose what you want to check";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showCompareView() {
+  if (modeLanding) modeLanding.style.display = "none";
+  if (compareCard) compareCard.style.display = "";
+  if (cqiSection) cqiSection.style.display = "none";
+  if (originalitySection) originalitySection.style.display = "none";
+  if (toggleModeBtn) toggleModeBtn.textContent = "Check CQI Score Only";
+  if (heroTitle) heroTitle.textContent = "Compare pasted content vs live website text";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showCqiView() {
+  if (modeLanding) modeLanding.style.display = "none";
+  if (compareCard) compareCard.style.display = "none";
+  if (originalitySection) originalitySection.style.display = "none";
+  if (cqiSection) cqiSection.style.display = "";
+  if (toggleModeBtn) toggleModeBtn.textContent = "Compare";
+  if (heroTitle) heroTitle.textContent = "Check Content Quality (CQI) for your copy";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showOriginalityView() {
+  if (modeLanding) modeLanding.style.display = "none";
+  if (compareCard) compareCard.style.display = "none";
+  if (cqiSection) cqiSection.style.display = "none";
+  if (originalitySection) originalitySection.style.display = "";
+  if (toggleModeBtn) toggleModeBtn.textContent = "Check CQI Score Only";
+  if (heroTitle) heroTitle.textContent = "Check Originality (AI & Plagiarism)";
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function setHowToOpen(isOpen) {
@@ -333,9 +420,58 @@ if (howToCqiModal) {
     if (e.target === howToCqiModal) setHowToCqiOpen(false);
   });
 }
+function setHowToOriginalityOpen(isOpen) {
+  if (!howToOriginalityModal) return;
+  howToOriginalityModal.classList.toggle("isOpen", isOpen);
+  howToOriginalityModal.setAttribute("aria-hidden", String(!isOpen));
+}
+if (howToOriginalityBtn) howToOriginalityBtn.addEventListener("click", () => setHowToOriginalityOpen(true));
+if (howToOriginalityClose) howToOriginalityClose.addEventListener("click", () => setHowToOriginalityOpen(false));
+if (howToOriginalityModal) {
+  howToOriginalityModal.addEventListener("click", (e) => {
+    if (e.target === howToOriginalityModal) setHowToOriginalityOpen(false);
+  });
+}
 window.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") { setHowToOpen(false); setHowToCqiOpen(false); }
+  if (e.key === "Escape") { setHowToOpen(false); setHowToCqiOpen(false); setHowToOriginalityOpen(false); }
 });
+
+// Back button on Compare view → Home
+if (compareBackBtn) {
+  compareBackBtn.addEventListener("click", () => {
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    showLandingView();
+  });
+}
+
+// Landing mode buttons
+if (modeCompareBtn) {
+  modeCompareBtn.addEventListener("click", () => {
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    showCompareView();
+  });
+}
+if (modeCqiBtn) {
+  modeCqiBtn.addEventListener("click", () => {
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    resetCqiUi();
+    showCqiView();
+  });
+}
+if (modeOriginalityBtn) {
+  modeOriginalityBtn.addEventListener("click", () => {
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    showOriginalityView();
+  });
+}
 
 if (clearBtn) {
   clearBtn.addEventListener("click", () => {
@@ -359,10 +495,8 @@ if (toggleModeBtn && cqiSection) {
       if (runMeta) runMeta.innerHTML = "";
 
       cqiSection.style.display = "none";
-      document.querySelector("section.card").style.display = ""; // the compare card
-      toggleModeBtn.textContent = "Check CQI Score Only";
-      if (heroTitle) heroTitle.textContent = "Compare pasted content vs live website text";
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      if (originalitySection) originalitySection.style.display = "none";
+      showCompareView();
     } else {
       // switching FROM Compare view TO CQI-only view
       // Clear Compare output so CQI page shows only CQI results
@@ -370,13 +504,33 @@ if (toggleModeBtn && cqiSection) {
       status.innerHTML = "";
       if (runMeta) runMeta.innerHTML = "";
       resetCqiUi();
+      if (originalitySection) originalitySection.style.display = "none";
 
-      cqiSection.style.display = "";
-      document.querySelector("section.card").style.display = "none";
-      toggleModeBtn.textContent = "Compare";
-      if (heroTitle) heroTitle.textContent = "Check Content Quality (CQI) for your copy";
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      showCqiView();
     }
+  });
+}
+
+// Toggle to Originality Check mode
+if (toggleOriginalityBtn && originalitySection) {
+  toggleOriginalityBtn.addEventListener("click", () => {
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    if (cqiSection) cqiSection.style.display = "none";
+    showOriginalityView();
+  });
+}
+
+if (originalityBackBtn && originalitySection) {
+  originalityBackBtn.addEventListener("click", () => {
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    originalitySection.style.display = "none";
+    if (cqiSection) cqiSection.style.display = "none";
+    // Return to landing so user can choose another mode
+    showLandingView();
   });
 }
 
@@ -384,21 +538,16 @@ if (toggleModeBtn && cqiSection) {
 const cqiBackBtn = document.getElementById("cqiBackBtn");
 if (cqiBackBtn) {
   cqiBackBtn.addEventListener("click", () => {
-    // Going back to Compare view: clear CQI/analysis output so Compare page is fresh
+    // Going back to landing view: clear CQI/analysis output so landing is fresh
     output.innerHTML = "";
     status.innerHTML = "";
     if (runMeta) runMeta.innerHTML = "";
     resetCqiUi();
+    if (originalitySection) originalitySection.style.display = "none";
 
-    // show compare form
+    // show landing
     cqiSection.style.display = "none";
-    const compareCard = document.querySelector("section.card");
-    if (compareCard) compareCard.style.display = "";
-    // update toggle button text
-    if (toggleModeBtn) toggleModeBtn.textContent = "Check CQI Score Only";
-    if (heroTitle) heroTitle.textContent = "Compare pasted content vs live website text";
-    // scroll to top of page for UX
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    showLandingView();
   });
 }
 
@@ -454,6 +603,99 @@ if (cqiClearBtn && cqiPasted) {
     status.innerHTML = "";
     if (runMeta) runMeta.innerHTML = "";
     updateApiPill();
+  });
+}
+
+if (runOriginalityBtn && originalityText) {
+  runOriginalityBtn.addEventListener("click", async () => {
+    const text = originalityText.value || "";
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setLoading(true, "originality");
+    if (!text.trim()) {
+      setLoading(false, "originality");
+      status.innerHTML = `<span class="fail">❌ Paste some content first</span>`;
+      return;
+    }
+    try {
+      const apiBase = getApiBaseFromQuery();
+      const url = apiBase ? `${apiBase}/originality` : "/originality";
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ text }),
+        mode: "cors",
+        cache: "no-cache"
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setLoading(false, "originality");
+      const ai = data.aiDetection || {};
+      const plag = data.plagiarism || {};
+      const aiScore = ai.aiScore != null ? ai.aiScore : null;
+      const humanScore = ai.humanScore != null ? ai.humanScore : null;
+      const plagScore = plag.score != null ? plag.score : null;
+      let statusCls = "pass";
+      if (aiScore != null && aiScore >= 70) statusCls = "fail";
+      else if (aiScore != null && aiScore >= 40) statusCls = "warn";
+      let statusHtml = "";
+      if (ai.available && aiScore != null) {
+        statusHtml = `<span class="${statusCls}">AI: ${aiScore}% · Human: ${humanScore}%</span>`;
+        if (plagScore != null) statusHtml += ` <span class="muted">· Plagiarism (originality): ${plagScore}%</span>`;
+      } else {
+        statusHtml = ai.message ? `<span class="warn">${escapeHtml(ai.message)}</span>` : "";
+        if (plagScore != null) statusHtml += ` <span class="muted">Plagiarism (originality): ${plagScore}%</span>`;
+      }
+      status.innerHTML = statusHtml || `<span class="muted">Done</span>`;
+
+      let blocks = "";
+      if (ai.available) {
+        blocks += `
+          <div class="metric originalityMetric">
+            <div class="metric__label">AI-generated</div>
+            <div class="metric__value">${aiScore != null ? aiScore + "%" : "—"}</div>
+            <div class="metric__sub">${ai.label ? escapeHtml(ai.label) : (ai.message || "—")}</div>
+            ${aiScore != null && humanScore != null ? `<div class="metric__note">Human-written score: ${humanScore}%</div>` : ""}
+          </div>`;
+      } else {
+        blocks += `
+          <div class="metric originalityMetric">
+            <div class="metric__label">AI detection</div>
+            <div class="metric__value">—</div>
+            <div class="metric__sub">${escapeHtml(ai.message || "Not available")}</div>
+          </div>`;
+      }
+      blocks += `
+        <div class="metric originalityMetric">
+          <div class="metric__label">Plagiarism (originality)</div>
+          <div class="metric__value">${plagScore != null ? plagScore + "%" : "—"}</div>
+          <div class="metric__sub">${escapeHtml(plag.message || "Compared to previously checked content.")}</div>
+          ${plag.similarityPercent != null ? `<div class="metric__note">Max similarity to stored content: ${plag.similarityPercent}%</div>` : ""}
+        </div>`;
+      output.innerHTML = `
+        <div class="metricsRow">
+          <h3>Originality results</h3>
+          <div class="metricsGrid">${blocks}</div>
+        </div>`;
+    } catch (err) {
+      setLoading(false, "originality");
+      console.error("Originality error:", err);
+      status.innerHTML = `<span class="fail">❌ ${escapeHtml(err.message || err.toString())}</span>`;
+    }
+  });
+}
+
+if (originalityClearBtn && originalityText) {
+  originalityClearBtn.addEventListener("click", () => {
+    originalityText.value = "";
+    output.innerHTML = "";
+    status.innerHTML = "";
+    if (runMeta) runMeta.innerHTML = "";
   });
 }
 
@@ -578,6 +820,13 @@ if (runCqiBtn) {
       // append preview after metrics
       const metricsContainer = output.querySelector(".metricsRow");
       if (metricsContainer) metricsContainer.appendChild(previewBlock);
+
+      const ltHtml = buildLanguageToolHtml(data.languageTool || {});
+      if (ltHtml && metricsContainer) {
+        const ltWrap = document.createElement("div");
+        ltWrap.innerHTML = ltHtml;
+        metricsContainer.appendChild(ltWrap.firstElementChild);
+      }
 
       // suggestions for improving CQI
       const suggNode = document.getElementById("cqiSuggestions");
@@ -767,8 +1016,13 @@ form.addEventListener("submit", async (e) => {
           ${cqiHtml}
         </div>
         <div id="compareCqiSuggestions" class="cqiSuggestions"></div>
+        <div id="compareLanguageTool"></div>
       </div>
     `;
+
+    const ltHtml = buildLanguageToolHtml(data.languageTool || {});
+    const compareLt = document.getElementById("compareLanguageTool");
+    if (compareLt && ltHtml) compareLt.innerHTML = ltHtml;
 
     // Attach toggle handler for showing calculation details
     const showCalcBtn = document.getElementById("showCalcBtn");

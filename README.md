@@ -75,6 +75,11 @@ Additional analyses included in the `/compare` response:
   - Computes a simple cosine similarity of token frequencies between pasted and actual content.
   - Returned as a 0–100 score and a short summary (High / Moderate / Low relevance).
 
+- **LanguageTool** (`languageTool`):
+  - Real spelling + grammar checking: spelling, grammar, context errors, repeated words, punctuation.
+  - Fully free when [self-hosted](https://languagetool.org). By default the backend uses the public API (`LANGUAGETOOL_API_URL`); set it to your self-hosted instance to avoid limits.
+  - Returns `available`, `matches` (with offset, length, message, replacements, fragment), `matchCount`, `language`, and `truncated` if text was cut to `LT_MAX_TEXT_BYTES`.
+
 Sample expanded response (abridged):
 
 ```json

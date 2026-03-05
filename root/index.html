@@ -39,12 +39,26 @@
       <h1 class="hero__title">Compare pasted content vs live website text</h1>
     </section>
 
-    <section class="card">
+    <section class="card" id="modeLanding">
+      <div class="card__header">
+        <div class="card__headerRow">
+          <div class="card__title">What do you want to do today?</div>
+        </div>
+      </div>
+      <p class="card__intro">Choose a mode below. You can always switch modes later using the buttons in each view.</p>
+      <div class="modeButtons">
+        <button class="btn btn--cta" type="button" id="modeCompareBtn">Compare content with Web</button>
+        <button class="btn btn--cta" type="button" id="modeCqiBtn">Check CQI Score Only</button>
+        <button class="btn btn--cta" type="button" id="modeOriginalityBtn">Check Originality</button>
+      </div>
+    </section>
+
+    <section class="card" id="compareCard" style="display:none;">
       <div class="card__header">
         <div class="card__headerRow">
           <div class="card__title">Test inputs</div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <button class="btn btn--cta" type="button" id="toggleModeBtn" aria-label="Switch mode">Check CQI Score Only</button>
+            <button class="btn btn--cta" type="button" id="compareBackBtn" aria-label="Go to home">Go to Home</button>
             <button class="infoBtn" type="button" id="howToBtn" aria-label="How to use" title="How to use">i</button>
           </div>
         </div>
@@ -91,7 +105,7 @@
         <div class="card__headerRow">
           <div class="card__title">Content Quality Index (CQI) Checker</div>
           <div style="display:flex;gap:8px;align-items:center;">
-            <button class="btn btn--cta" type="button" id="cqiBackBtn" aria-label="Back to compare">← Back</button>
+            <button class="btn btn--cta" type="button" id="cqiBackBtn" aria-label="Back to home">Go to Home</button>
             <button class="infoBtn" type="button" id="howToCqiBtn" aria-label="How to use CQI" title="How to use CQI">i</button>
           </div>
         </div>
@@ -109,6 +123,27 @@
       <div class="actions">
         <button class="btn" type="button" id="runCqiBtn">Check CQI</button>
         <button class="btn btn--ghost" type="button" id="cqiClearBtn">Clear</button>
+      </div>
+    </section>
+
+    <section class="card" id="originalitySection" style="display:none;">
+      <div class="card__header">
+        <div class="card__headerRow">
+          <div class="card__title">Originality Check (AI + Plagiarism)</div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button class="btn btn--cta" type="button" id="originalityBackBtn" aria-label="Back to home">Go to Home</button>
+            <button class="infoBtn" type="button" id="howToOriginalityBtn" aria-label="How to use Originality" title="How to use">i</button>
+          </div>
+        </div>
+      </div>
+      <p class="card__intro">Paste content to check how likely it is <b>AI-generated</b> and whether it matches <b>previously checked content</b> (plagiarism).</p>
+      <div class="field">
+        <label class="field__label" for="originalityText">Content to check</label>
+        <textarea id="originalityText" name="originalityText" placeholder="Paste text to analyse for AI detection and plagiarism..." rows="10"></textarea>
+      </div>
+      <div class="actions">
+        <button class="btn" type="button" id="runOriginalityBtn">Check Originality</button>
+        <button class="btn btn--ghost" type="button" id="originalityClearBtn">Clear</button>
       </div>
     </section>
 
@@ -258,6 +293,28 @@
           <li>Aim for at least <b>150 words</b> for a reliable CQI reading on section blocks.</li>
         </ol>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- Originality info modal -->
+  <div class="modalBackdrop" id="howToOriginalityModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="howToOriginalityTitle">
+      <div class="modal__head">
+        <div>
+          <div class="modal__title" id="howToOriginalityTitle">Originality Check</div>
+          <div class="modal__sub">AI detection &amp; plagiarism</div>
+        </div>
+        <button class="modal__close" type="button" id="howToOriginalityClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal__body">
+        <p class="modal__intro"><b>AI detection</b> uses a model to estimate whether the text was written by a human or by an AI (e.g. ChatGPT). You need a <code>HUGGINGFACE_API_KEY</code> in your backend .env to enable it.</p>
+        <p class="modal__intro"><b>Plagiarism</b> compares your text against other content previously checked with this tool. High similarity means the text is very similar to something already submitted. Content you check is stored in memory for future comparisons (no data is sent to external plagiarism databases).</p>
+        <ol class="howto">
+          <li>Paste your content in the text area.</li>
+          <li>Click <b>Check Originality</b>.</li>
+          <li>Review the <b>AI score</b> (higher = more likely AI-generated) and <b>Plagiarism score</b> (higher = more original).</li>
+        </ol>
       </div>
     </div>
   </div>

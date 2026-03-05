@@ -239,7 +239,15 @@ body::before {
 
 .card__title { font-weight: 750; }
 .card__hint { font-size: 12px; color: var(--muted2); margin-top: 6px; }
+.card__intro { color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
 .card__hint code { color: rgba(255,255,255,0.88); }
+
+.modeButtons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
 
 .infoBtn {
   width: 34px;
@@ -447,8 +455,9 @@ textarea { resize: vertical; min-height: 180px; }
   color: rgba(15, 23, 42, 0.85);
 }
 
-/* Primary CTA button style (used for CQI toggle) */
-.btn--cta {
+/* Primary CTA button style (used for CQI toggle and Originality toggle) */
+.btn--cta,
+.btn--secondary {
   /* Match size of primary .btn (same padding & font-size) for visual parity */
   padding: 14px 18px;
   font-size: 15px;
@@ -690,6 +699,7 @@ textarea { resize: vertical; min-height: 180px; }
   display: inline-block;
 }
 .cqiMetric { position: relative; }
+.originalityMetric { position: relative; }
 .calcToggle {
   margin-top: 10px;
   padding: 8px 10px;
@@ -744,6 +754,55 @@ textarea { resize: vertical; min-height: 180px; }
 }
 .pastedPreviewBlock {
   margin-top: 14px;
+}
+.languageToolBlock {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.06);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+.languageToolBlock h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(30, 41, 59, 0.9);
+}
+.languageToolCallout {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(30, 41, 59, 0.85);
+}
+.languageToolCallout a {
+  color: #6366f1;
+  text-decoration: none;
+}
+.languageToolCallout a:hover {
+  text-decoration: underline;
+}
+.languageToolStatus {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: rgba(30, 41, 59, 0.6);
+}
+.languageToolList {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(30, 41, 59, 0.85);
+}
+.languageToolList li {
+  margin-bottom: 6px;
+}
+.languageToolList li strong {
+  color: #4338ca;
+}
+.languageToolMore,
+.languageToolWarn {
+  color: rgba(30, 41, 59, 0.6);
+  font-style: italic;
 }
 .pastedPreviewTitle {
   font-size: 14px;

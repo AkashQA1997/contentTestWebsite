@@ -69,6 +69,9 @@ const LENGTH_SCALE = Number(process.env.LENGTH_SCALE) || 200; // words at which 
 const BROKEN_LINK_MODE = process.env.BROKEN_LINK_MODE || "fast"; // "off" | "fast" | "sync"
 const BROKEN_LINK_MAX_URLS = Number(process.env.BROKEN_LINK_MAX_URLS) || 5;
 const BROKEN_LINK_TIMEOUT_MS = Number(process.env.BROKEN_LINK_TIMEOUT_MS) || (BROKEN_LINK_MODE === "fast" ? 1000 : 3000);
+const LANGUAGETOOL_API_URL = process.env.LANGUAGETOOL_API_URL || "https://api.languagetool.org/v2/check";
+const LANGUAGETOOL_ENABLED = process.env.LANGUAGETOOL_ENABLED !== "false";
+const LT_MAX_TEXT_BYTES = 20 * 1024;
 
 // CORS configuration - allow all origins for GitHub Pages
 app.use(cors({
@@ -536,6 +539,197 @@ function computeCosineSimilarity(a, b) {
 // (Meaning-drift analysis removed)
 
 // ----------------------------
+// Originality: AI detection (Hugging Face) + plagiarism (in-memory similarity)
+// ----------------------------
+// Use a fixed Hugging Face model endpoint (no per-env model config)
+const HF_INFERENCE_URL = "https://router.huggingface.co/hf-inference/models/openai-community/roberta-base-openai-detector";
+const ORIGINALITY_STORE_MAX = 200; // max past texts to compare against for plagiarism
+const originalityStore = []; // in-memory: array of normalized strings
+
+async function detectAIGenerated(text) {
+  const token = process.env.HUGGINGFACE_API_KEY;
+  if (!token || !text || typeof text !== "string") {
+    return {
+      available: !!token,
+      message: token ? "No text provided" : "HUGGINGFACE_API_KEY not set — add it in .env to enable AI detection",
+      aiScore: null,
+      humanScore: null,
+      label: null
+    };
+  }
+  const trimmed = text.trim().slice(0, 5000); // HF free tier often has input limits
+  if (!trimmed.length) {
+    return { available: true, message: "Text empty", aiScore: null, humanScore: null, label: null };
+  }
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    const res = await fetch(HF_INFERENCE_URL, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ inputs: trimmed }),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const errText = await res.text();
+      return {
+        available: true,
+        message: `Hugging Face API: ${res.status} — ${errText.slice(0, 200)}`,
+        aiScore: null,
+        humanScore: null,
+        label: null
+      };
+    }
+    const data = await res.json();
+    // Response shape (router / hf-inference):
+    //   - [{ "label": "Real"|"Fake", "score": 0.99 }, ...]
+    //   - or [[{ "label": "...", "score": ... }]] in some cases
+    //   - or { error: "..." }
+    if (data && data.error) {
+      return {
+        available: true,
+        message: data.error,
+        aiScore: null,
+        humanScore: null,
+        label: null
+      };
+    }
+
+    // Normalise to "candidates" = array of { label, score }
+    let candidates = null;
+    if (Array.isArray(data)) {
+      if (data.length > 0 && Array.isArray(data[0])) {
+        candidates = data[0];
+      } else {
+        candidates = data;
+      }
+    } else if (data && Array.isArray(data.outputs)) {
+      candidates = data.outputs;
+    }
+
+    const first = candidates && candidates.length ? candidates[0] : null;
+    const label = (first && first.label) ? String(first.label) : null;
+    const score = first && typeof first.score === "number" ? first.score : null;
+    // "Fake" = AI-generated → aiScore is the probability of AI
+    const isFake = label && label.toLowerCase().includes("fake");
+    const aiScore = score != null ? (isFake ? Math.round(score * 100) : Math.round((1 - score) * 100)) : null;
+    const humanScore = aiScore != null ? 100 - aiScore : null;
+
+    if (aiScore == null) {
+      return {
+        available: true,
+        message: "Hugging Face response did not include label/score for AI detection.",
+        aiScore: null,
+        humanScore: null,
+        label: null
+      };
+    }
+    return {
+      available: true,
+      label: label || (aiScore != null ? (aiScore > 50 ? "AI-generated" : "Human-written") : null),
+      aiScore,
+      humanScore,
+      message: null
+    };
+  } catch (err) {
+    console.warn("AI detection failed:", err.message || err);
+    return {
+      available: true,
+      message: err.message || "AI detection request failed",
+      aiScore: null,
+      humanScore: null,
+      label: null
+    };
+  }
+}
+
+function plagiarismCheck(normalizedText) {
+  if (!normalizedText || normalizedText.length < 20) {
+    return { score: 0, similarityPercent: 0, message: "Text too short to check", matches: 0 };
+  }
+  if (originalityStore.length === 0) {
+    return { score: 100, similarityPercent: 0, message: "No stored content to compare yet. This text will be added for future checks.", matches: 0 };
+  }
+  let maxSim = 0;
+  let matchCount = 0;
+  for (const stored of originalityStore) {
+    const sim = computeCosineSimilarity(normalizedText, stored);
+    if (sim > maxSim) maxSim = sim;
+    if (sim >= 0.7) matchCount += 1;
+  }
+  // score: 100 = no plagiarism, 0 = full match
+  const plagiarismScore = Math.round(100 * (1 - maxSim));
+  const message = maxSim >= 0.85
+    ? "High similarity to previously checked content."
+    : maxSim >= 0.6
+      ? "Moderate similarity to previously checked content."
+      : "Low or no similarity to stored content.";
+  return {
+    score: Math.max(0, Math.min(100, plagiarismScore)),
+    similarityPercent: Math.round(maxSim * 100),
+    message,
+    matches: matchCount
+  };
+}
+
+function addToOriginalityStore(normalizedText) {
+  if (!normalizedText || normalizedText.length < 20) return;
+  originalityStore.push(normalizedText);
+  if (originalityStore.length > ORIGINALITY_STORE_MAX) {
+    originalityStore.shift();
+  }
+}
+
+// ----------------------------
+// LanguageTool (open-source) — spelling, grammar, context, repeated words, punctuation. Free when self-hosted.
+// ----------------------------
+const LT_LANG_MAP = { en: "en-US", es: "es", fr: "fr", de: "de-DE", pt: "pt-BR" };
+async function checkLanguageTool(text, lang = "en") {
+  if (!LANGUAGETOOL_ENABLED || !text || typeof text !== "string") {
+    return { available: false, message: "LanguageTool disabled or no text" };
+  }
+  const ltLang = LT_LANG_MAP[lang] || "en-US";
+  const truncated = text.length > LT_MAX_TEXT_BYTES ? text.slice(0, LT_MAX_TEXT_BYTES) : text;
+  const body = new URLSearchParams({ text: truncated, language: ltLang });
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(LANGUAGETOOL_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return { available: false, message: `LanguageTool API: ${res.status}` };
+    const data = await res.json();
+    const matches = (data.matches || []).map(m => ({
+      offset: m.offset ?? 0,
+      length: m.length ?? 0,
+      message: m.message || "",
+      shortMessage: m.shortMessage || "",
+      replacements: (m.replacements || []).map(r => (typeof r === "string" ? r : r.value)).filter(Boolean),
+      rule: m.rule ? { id: m.rule.id, description: m.rule.description } : null,
+      fragment: truncated.slice(m.offset ?? 0, (m.offset ?? 0) + (m.length ?? 0))
+    }));
+    return {
+      available: true,
+      matches,
+      matchCount: matches.length,
+      language: ltLang,
+      truncated: text.length > LT_MAX_TEXT_BYTES
+    };
+  } catch (err) {
+    console.warn("LanguageTool check failed:", err.message || err);
+    return { available: false, message: err.message || "LanguageTool request failed" };
+  }
+}
+
+// ----------------------------
 // API: Compare
 // ----------------------------
 app.post("/compare", async (req, res) => {
@@ -566,11 +760,13 @@ app.post("/compare", async (req, res) => {
     const intentRelevanceScore = Math.round(computeCosineSimilarity(expectedNormalized, actualNormalized) * 100);
 
     const spelling = await analyzeSpelling(expectedNormalized, req.body.lang || "en");
+    const languageTool = await checkLanguageTool(expectedNormalized, req.body.lang || "en");
     const response = {
       expectedHtml,
       actualHtml,
       cqi,
       spelling,
+      languageTool,
       seo,
       engagement,
       duplication,
@@ -602,7 +798,44 @@ app.post("/cqi", async (req, res) => {
     const expectedNormalized = normalizeText(pastedContent);
     const cqi = calculateCQI(expectedNormalized);
     const spelling = await analyzeSpelling(expectedNormalized, req.body.lang || "en");
-    res.json({ cqi, spelling });
+    const languageTool = await checkLanguageTool(expectedNormalized, req.body.lang || "en");
+    res.json({ cqi, spelling, languageTool });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------
+// API: Originality check (AI detection + plagiarism)
+// ----------------------------
+app.post("/originality", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({ error: "Missing text" });
+    }
+
+    const normalized = normalizeText(text);
+    const aiDetection = await detectAIGenerated(normalized);
+    const plagiarism = plagiarismCheck(normalized);
+    addToOriginalityStore(normalized);
+
+    res.json({
+      aiDetection: {
+        available: aiDetection.available,
+        message: aiDetection.message,
+        aiScore: aiDetection.aiScore,
+        humanScore: aiDetection.humanScore,
+        label: aiDetection.label
+      },
+      plagiarism: {
+        score: plagiarism.score,
+        similarityPercent: plagiarism.similarityPercent,
+        message: plagiarism.message,
+        matches: plagiarism.matches
+      }
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
